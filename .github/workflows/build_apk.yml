@@ -21,23 +21,34 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.x'
+          flutter-version: '3.24.x'
           channel: 'stable'
 
-      - name: Create Flutter skeleton
+      - name: Create complete Flutter app
         run: |
-          flutter create --org com.fh6.scanner --project-name fh6_scanner temp_project
-          cp -r temp_project/android ./
-          rm -rf temp_project
+          # Создаем чистый шаблон приложения
+          flutter create --org com.fh6.scanner --platforms android app_build
+          cd app_build
 
-      - name: Install dependencies
-        run: flutter pub get
+          # Добавляем зависимости
+          flutter pub add camera google_mlkit_text_recognition
 
-      - name: Build APK
-        run: flutter build apk --release --no-shrink
+          # Копируем ваш main.dart, если он есть в репозитории
+          if [ -f "../lib/main.dart" ]; then
+            cp ../lib/main.dart lib/main.dart
+          fi
+
+          # Настраиваем разрешения и minSdkVersion для ML Kit в build.gradle
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle || true
+          
+          # Добавляем разрешение на камеру в AndroidManifest
+          sed -i '/<application/i <uses-permission android:name="android.permission.CAMERA"/>' android/app/src/main/AndroidManifest.xml
+
+          # Собираем APK
+          flutter build apk --release --no-shrink
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: FH6-Auction-Scanner-APK
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: app_build/build/app/outputs/flutter-apk/app-release.apk
