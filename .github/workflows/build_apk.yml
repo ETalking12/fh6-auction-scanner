@@ -26,26 +26,33 @@ jobs:
 
       - name: Create complete Flutter app
         run: |
-          # Создаем чистый проект со всеми конфигами
+          # Создаем чистый проект
           flutter create --org com.fh6.scanner --platforms android app_build
           cd app_build
 
-          # Добавляем зависимости с совместимыми версиями
+          # Добавляем совместимые плагины
           flutter pub add camera:0.10.5+9 google_mlkit_text_recognition:0.13.0
 
-          # Копируем ваш main.dart из репозитория
+          # Копируем ваш main.dart
           if [ -f "../lib/main.dart" ]; then
             cp ../lib/main.dart lib/main.dart
           fi
 
-          # Выставляем минимальную версию Android SDK 21 (требование ML Kit)
+          # Выставляем minSdkVersion 21
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle || true
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle || true
+
+          # Отключаем R8 / Proguard, вызывающий ошибку отсутствующих языковых классов ML Kit
+          cat << 'EOF' >> android/app/proguard-rules.pro
+          -dontwarn com.google.mlkit.**
+          -keep class com.google.mlkit.** { *; }
+          -dontwarn com.google.android.gms.**
+          EOF
 
           # Добавляем разрешение на камеру
           sed -i '/<application/i <uses-permission android:name="android.permission.CAMERA"/>' android/app/src/main/AndroidManifest.xml
 
-          # Собираем релизный APK
+          # Собираем релизный APK без сжатия R8
           flutter build apk --release --no-shrink
 
       - name: Upload APK Artifact
