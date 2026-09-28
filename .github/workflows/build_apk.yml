@@ -21,30 +21,31 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.x'
+          flutter-version: '3.24.5'
           channel: 'stable'
 
       - name: Create complete Flutter app
         run: |
-          # Создаем чистый шаблон приложения
+          # Создаем чистый проект со всеми конфигами
           flutter create --org com.fh6.scanner --platforms android app_build
           cd app_build
 
-          # Добавляем зависимости
-          flutter pub add camera google_mlkit_text_recognition
+          # Добавляем зависимости с совместимыми версиями
+          flutter pub add camera:0.10.5+9 google_mlkit_text_recognition:0.13.0
 
-          # Копируем ваш main.dart, если он есть в репозитории
+          # Копируем ваш main.dart из репозитория
           if [ -f "../lib/main.dart" ]; then
             cp ../lib/main.dart lib/main.dart
           fi
 
-          # Настраиваем разрешения и minSdkVersion для ML Kit в build.gradle
+          # Выставляем минимальную версию Android SDK 21 (требование ML Kit)
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle || true
-          
-          # Добавляем разрешение на камеру в AndroidManifest
+          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle || true
+
+          # Добавляем разрешение на камеру
           sed -i '/<application/i <uses-permission android:name="android.permission.CAMERA"/>' android/app/src/main/AndroidManifest.xml
 
-          # Собираем APK
+          # Собираем релизный APK
           flutter build apk --release --no-shrink
 
       - name: Upload APK Artifact
