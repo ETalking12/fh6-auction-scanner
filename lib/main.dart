@@ -134,7 +134,7 @@ class _Forza6SniperAppState extends State<Forza6SniperApp> {
 }
 
 // =======================================================
-// 1. АВТОМАТИЧЕСКИЙ СЕЗОННЫЙ СОВЕТНИК + ТАЙМЕР
+// 1. АВТОМАТИЧЕСКИЙ СЕЗОННЫЙ СОВЕТНИК + ТАЙМЕР + ХАРАКТЕРИСТИКИ
 // =======================================================
 class StrategyAdvisorTab extends StatefulWidget {
   const StrategyAdvisorTab({super.key});
@@ -223,6 +223,61 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
         _isLoading = false;
       });
     }
+  }
+
+  // Метод для показа модального окна с характеристиками машины
+  void _showCarDetails(BuildContext context, String carName, String estValue, String season) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: const BorderSide(color: Colors.greenAccent, width: 1)),
+        title: Row(
+          children: [
+            const Icon(Icons.directions_car, color: Colors.greenAccent),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(carName, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSpecRow("Сезон награды:", season),
+            _buildSpecRow("Рыночный потолок:", estValue),
+            _buildSpecRow("Рекомендуемый класс:", "S1 900 / S2 998"),
+            _buildSpecRow("Тип привода:", "Полный (AWD) / Задний"),
+            _buildSpecRow("Ликвидность на торгах:", "🔥🔥🔥 Высокая (Дефицит)"),
+            const SizedBox(height: 12),
+            const Text(
+              "💡 Совет по снайпингу: Модель пользуется повышенным спросом в текущей серии «Британский Автопром». Скупайте лоты со скидкой от 20% и выставляйте по максимальной цене.",
+              style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("ЗАКРЫТЬ", style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSpecRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+        ],
+      ),
+    );
   }
 
   @override
@@ -339,14 +394,14 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
         if (cars20.isNotEmpty) ...[
           const Text("🏆 НАГРАДЫ 20 PTS", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
           const SizedBox(height: 6),
-          ...cars20.map((c) => _buildCarCard(c, Colors.amberAccent, season)),
+          ...cars20.map((c) => _buildCarCard(context, c, Colors.amberAccent, season)),
           const SizedBox(height: 12),
         ],
 
         if (cars40.isNotEmpty) ...[
           const Text("⭐ НАГРАДЫ 40 PTS", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
           const SizedBox(height: 6),
-          ...cars40.map((c) => _buildCarCard(c, Colors.cyanAccent, season)),
+          ...cars40.map((c) => _buildCarCard(context, c, Colors.cyanAccent, season)),
           const SizedBox(height: 12),
         ],
 
@@ -364,7 +419,7 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
     );
   }
 
-  Widget _buildCarCard(dynamic carData, Color accentColor, String activeSeason) {
+  Widget _buildCarCard(BuildContext context, dynamic carData, Color accentColor, String activeSeason) {
     String name = "Автомобиль";
     String val = "";
     if (carData is Map) {
@@ -377,10 +432,11 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: const BorderSide(color: Colors.white10)),
       child: ListTile(
+        onTap: () => _showCarDetails(context, name, val, activeSeason),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
         leading: Icon(Icons.directions_car, color: accentColor),
         title: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-        subtitle: const Text("Чистый доход с учетом налога аукциона (15%)", style: TextStyle(color: Colors.white38, fontSize: 10)),
+        subtitle: const Text("Тапните для просмотра характеристик", style: TextStyle(color: Colors.white38, fontSize: 10)),
         trailing: val.isNotEmpty ? Text(val, style: TextStyle(color: accentColor, fontWeight: FontWeight.bold, fontSize: 12)) : null,
       ),
     );
