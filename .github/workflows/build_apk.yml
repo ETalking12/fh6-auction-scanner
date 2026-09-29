@@ -23,12 +23,10 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.19.x'
-          cache: true
+          cache: false
 
-      - name: Recreate Android Project cleanly
-        run: |
-          rm -rf android
-          flutter create . --org com.fh6.scanner --platforms android
+      - name: Create fresh Android platform with v2 embedding
+        run: flutter create . --org com.fh6.scanner --platforms android
 
       - name: Install dependencies
         run: flutter pub get
