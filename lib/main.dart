@@ -27,8 +27,8 @@ Future<void> main() async {
 
 class WatchlistItem {
   final String id;
-  final String name;
-  final int buyPrice;
+  String name;
+  int buyPrice;
   final int targetPrice;
   String status;
   final String dateAdded;
@@ -102,7 +102,7 @@ class _Forza6SniperAppState extends State<Forza6SniperApp> {
     setState(() => _portfolio.insert(0, newItem));
     _savePortfolio();
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("✓ $carName добавлен в Forza6Sniper Радар!"), backgroundColor: Colors.green[800], duration: const Duration(seconds: 2)),
+      SnackBar(content: Text("✓ $carName сохранен!"), backgroundColor: Colors.green[800], duration: const Duration(seconds: 2)),
     );
   }
 
@@ -138,16 +138,13 @@ class _Forza6SniperAppState extends State<Forza6SniperApp> {
 // =======================================================
 class StrategyAdvisorTab extends StatefulWidget {
   const StrategyAdvisorTab({super.key});
-
   @override
   State<StrategyAdvisorTab> createState() => _StrategyAdvisorTabState();
 }
-
 class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
   Map<String, dynamic>? _playlistData;
   bool _isLoading = true;
   String _errorMsg = "";
-  
   late Timer _timer;
   String _timeRemaining = "";
 
@@ -175,153 +172,35 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
     if (daysUntilThursday == 0 && (now.hour > 14 || (now.hour == 14 && now.minute >= 30))) {
       daysUntilThursday = 7;
     }
-    
     DateTime nextThursday = DateTime.utc(now.year, now.month, now.day).add(Duration(days: daysUntilThursday));
     nextThursday = DateTime.utc(nextThursday.year, nextThursday.month, nextThursday.day, 14, 30);
-    
     Duration diff = nextThursday.difference(now);
     if (diff.isNegative) diff = const Duration(seconds: 0);
 
-    int days = diff.inDays;
-    int hours = diff.inHours % 24;
-    int minutes = diff.inMinutes % 60;
-    int seconds = diff.inSeconds % 60;
-
     if (mounted) {
       setState(() {
-        _timeRemaining = "${days}д ${hours}ч ${minutes}м ${seconds}с до смены сезона";
+        _timeRemaining = "${diff.inDays}д ${diff.inHours % 24}ч ${diff.inMinutes % 60}м ${diff.inSeconds % 60}с до смены сезона";
       });
     }
   }
 
   Future<void> _fetchPlaylistData() async {
-    setState(() {
-      _isLoading = true;
-      _errorMsg = "";
-    });
-
+    setState(() { _isLoading = true; _errorMsg = ""; });
     try {
       final res = await http.get(Uri.parse(PLAYLIST_FEED_URL)).timeout(const Duration(seconds: 10));
       if (!mounted) return;
-
       if (res.statusCode == 200) {
-        final decoded = jsonDecode(utf8.decode(res.bodyBytes));
         setState(() {
-          _playlistData = decoded;
+          _playlistData = jsonDecode(utf8.decode(res.bodyBytes));
           _isLoading = false;
         });
       } else {
-        setState(() {
-          _errorMsg = "Сервер недоступен (Код: ${res.statusCode})";
-          _isLoading = false;
-        });
+        setState(() { _errorMsg = "Сервер недоступен (Код: ${res.statusCode})"; _isLoading = false; });
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _errorMsg = "Ошибка сети: проверьте подключение";
-        _isLoading = false;
-      });
+      setState(() { _errorMsg = "Ошибка сети: проверьте подключение"; _isLoading = false; });
     }
-  }
-
-  void _showCarDetails(BuildContext context, String carName, String estValue, String season) {
-    const String imageUrl = "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=800&q=80";
-
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.greenAccent, width: 1),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: ShaderMask(
-                    shaderCallback: (rect) {
-                      return LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.black.withOpacity(0.3), Colors.black.withOpacity(0.95)],
-                      ).createShader(rect);
-                    },
-                    blendMode: BlendMode.darken,
-                    child: Image.network(
-                      imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(color: const Color(0xFF1E1E1E)),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.directions_car, color: Colors.greenAccent),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(carName, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                          ),
-                        ],
-                      ),
-                      const Divider(color: Colors.white24, height: 20),
-                      _buildSpecRow("Сезон награды:", season),
-                      _buildSpecRow("Рыночный потолок:", estValue),
-                      _buildSpecRow("Рекомендуемый класс:", "S1 900 / S2 998"),
-                      _buildSpecRow("Тип привода:", "Полный (AWD) / Задний"),
-                      _buildSpecRow("Ликвидность:", "🔥 Дефицит (Топ)"),
-                      const SizedBox(height: 12),
-                      const Text(
-                        "💡 Совет по снайпингу: Модель пользуется повышенным спросом в текущей серии «Британский Автопром». Скупайте лоты со скидкой от 20% и выставляйте по максимальной цене.",
-                        style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
-                      ),
-                      const SizedBox(height: 16),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text("ЗАКРЫТЬ", style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSpecRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -332,163 +211,26 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
         title: const Text("Forza6Sniper | Сезон & Советы", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         backgroundColor: const Color(0xFF1E1E1E),
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.greenAccent),
-            onPressed: _isLoading ? null : _fetchPlaylistData,
-          )
-        ],
+        actions: [IconButton(icon: const Icon(Icons.refresh, color: Colors.greenAccent), onPressed: _isLoading ? null : _fetchPlaylistData)],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.greenAccent))
-          : _errorMsg.isNotEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(_errorMsg, style: const TextStyle(color: Colors.redAccent)),
-                      const SizedBox(height: 12),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent),
-                        onPressed: _fetchPlaylistData,
-                        child: const Text("Повторить", style: TextStyle(color: Colors.black)),
-                      )
-                    ],
-                  ),
-                )
-              : _buildStructuredView(_playlistData!),
-    );
-  }
-
-  Widget _buildStructuredView(Map<String, dynamic> data) {
-    final season = data['current_season']?.toString() ?? "WINTER";
-    final series = data['series_number']?.toString() ?? "Series";
-    final seriesRewards = data['series_rewards']?.toString() ?? "";
-    final advice = data['trading_advice']?.toString() ?? "";
-    final List cars20 = (data['cars_20pts'] is List) ? data['cars_20pts'] : [];
-    final List cars40 = (data['cars_40pts'] is List) ? data['cars_40pts'] : [];
-
-    return ListView(
-      padding: const EdgeInsets.all(14),
-      physics: const BouncingScrollPhysics(),
-      children: [
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [Colors.green.shade900.withOpacity(0.5), const Color(0xFF1E1E1E)]),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.greenAccent.withOpacity(0.3)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.calendar_today, color: Colors.greenAccent, size: 26),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(season.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                        Text(series, style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                  const Chip(
-                    label: Text("SYNCED", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
-                    backgroundColor: Colors.greenAccent,
-                    padding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
-                  )
-                ],
-              ),
-              const Divider(color: Colors.white24, height: 20),
-              Row(
-                children: [
-                  const Icon(Icons.timer, color: Colors.amberAccent, size: 16),
-                  const SizedBox(width: 8),
-                  Text(_timeRemaining, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500)),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-
-        if (seriesRewards.isNotEmpty) ...[
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E1E1E),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.amberAccent.withOpacity(0.3)),
-            ),
-            child: Row(
+      body: _isLoading ? const Center(child: CircularProgressIndicator(color: Colors.greenAccent))
+          : _errorMsg.isNotEmpty ? Center(child: Text(_errorMsg, style: const TextStyle(color: Colors.redAccent)))
+          : ListView(
+              padding: const EdgeInsets.all(14),
               children: [
-                const Icon(Icons.stars, color: Colors.amberAccent, size: 20),
-                const SizedBox(width: 10),
-                Expanded(child: Text(seriesRewards, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500))),
+                Text("СЕЗОН: ${_playlistData?['current_season']?.toString().toUpperCase() ?? 'WINTER'}", style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 10),
+                Text(_timeRemaining, style: const TextStyle(color: Colors.amberAccent, fontSize: 14)),
+                const Divider(color: Colors.white24, height: 30),
+                Text("Совет: ${_playlistData?['trading_advice'] ?? 'Отсутствует'}", style: const TextStyle(color: Colors.white70, fontSize: 14)),
               ],
             ),
-          ),
-          const SizedBox(height: 14),
-        ],
-
-        if (cars20.isNotEmpty) ...[
-          const Text("🏆 НАГРАДЫ 20 PTS", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 6),
-          ...cars20.map((c) => _buildCarCard(context, c, Colors.amberAccent, season)),
-          const SizedBox(height: 12),
-        ],
-
-        if (cars40.isNotEmpty) ...[
-          const Text("⭐ НАГРАДЫ 40 PTS", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 6),
-          ...cars40.map((c) => _buildCarCard(context, c, Colors.cyanAccent, season)),
-          const SizedBox(height: 12),
-        ],
-
-        if (advice.isNotEmpty) ...[
-          const Text("💡 СТРАТЕГИЯ СНАЙПИНГА", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white12)),
-            child: Text(advice, style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.45)),
-          ),
-        ],
-        const SizedBox(height: 20),
-      ],
-    );
-  }
-
-  Widget _buildCarCard(BuildContext context, dynamic carData, Color accentColor, String activeSeason) {
-    String name = "Автомобиль";
-    String val = "";
-    if (carData is Map) {
-      name = carData['name']?.toString() ?? "Автомобиль";
-      val = carData['est_value']?.toString() ?? "";
-    }
-
-    return Card(
-      color: const Color(0xFF1E1E1E),
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: const BorderSide(color: Colors.white10)),
-      child: ListTile(
-        onTap: () => _showCarDetails(context, name, val, activeSeason),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-        leading: Icon(Icons.directions_car, color: accentColor),
-        title: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-        subtitle: const Text("Тапните для просмотра характеристик", style: TextStyle(color: Colors.white38, fontSize: 10)),
-        trailing: val.isNotEmpty ? Text(val, style: TextStyle(color: accentColor, fontWeight: FontWeight.bold, fontSize: 12)) : null,
-      ),
     );
   }
 }
 
 // ==========================================
-// 2. СКАНЕР АУКЦИОНА НА GOOGLE ML KIT (МОЛНИЕНОСНЫЙ)
+// 2. СКАНЕР АУКЦИОНА С АВТОЧТЕНИЕМ НАЗВАНИЙ
 // ==========================================
 class ScannerTab extends StatefulWidget {
   final Function(String name, int price) onAddToPortfolio;
@@ -504,8 +246,8 @@ class _ScannerTabState extends State<ScannerTab> {
   bool _isScanning = false;
   bool _isTorchOn = false;
   
-  final String _currentSlot = "Слот 1 (Авто)";
   int _detectedPrice = 0;
+  String _detectedCarName = "";
   bool _isSnipeAlert = false;
   String _lastRawText = "Готов к сканированию...";
   String _statusBanner = "Наведите рамку на цены выкупа";
@@ -527,19 +269,14 @@ class _ScannerTabState extends State<ScannerTab> {
       _isScanning = true;
       _startScanLoop();
     } catch (e) {
-      debugPrint("Ошибка камеры: $e");
       if (mounted) setState(() => _statusBanner = "Ошибка камеры: $e");
     }
   }
 
   Future<void> _toggleTorch() async {
     if (_controller == null || !_controller!.value.isInitialized) return;
-    try {
-      setState(() => _isTorchOn = !_isTorchOn);
-      await _controller!.setFlashMode(_isTorchOn ? FlashMode.torch : FlashMode.off);
-    } catch (e) {
-      debugPrint("Ошибка фонарика: $e");
-    }
+    setState(() => _isTorchOn = !_isTorchOn);
+    await _controller!.setFlashMode(_isTorchOn ? FlashMode.torch : FlashMode.off);
   }
 
   void _startScanLoop() async {
@@ -552,36 +289,61 @@ class _ScannerTabState extends State<ScannerTab> {
 
           final inputImage = InputImage.fromFilePath(image.path);
           final recognizedText = await _textRecognizer.processImage(inputImage);
-
           if (!mounted) break;
 
-          final raw = recognizedText.text.trim().replaceAll('\n', ' ');
+          final raw = recognizedText.text.trim();
           setState(() {
-            _lastRawText = raw.isEmpty ? "Текст не найден" : (raw.length > 35 ? "${raw.substring(0, 35)}..." : raw);
+            _lastRawText = raw.isEmpty ? "Текст не найден" : (raw.length > 35 ? "${raw.substring(0, 35)}..." : raw.replaceAll('\n', ' '));
           });
 
-          final cleanNumbers = raw.replaceAll(RegExp(r'[^0-9]'), '');
-          final match = RegExp(r'\d{6,8}').firstMatch(cleanNumbers);
+          // 1. Поиск цены
+          final priceRegex = RegExp(r'\b\d{1,3}(?:[., ]\d{3})*\b|\b\d+\b');
+          final priceMatches = priceRegex.allMatches(raw);
+          List<int> validPrices = [];
           
-          if (match != null) {
-            int foundPrice = int.parse(match.group(0)!);
-            _processPrice(foundPrice);
+          for (final match in priceMatches) {
+            String cleanNumStr = match.group(0)!.replaceAll(RegExp(r'[^0-9]'), '');
+            if (cleanNumStr.isNotEmpty) {
+              int parsedNum = int.parse(cleanNumStr);
+              if (parsedNum >= 10000 && parsedNum <= 20000000) {
+                validPrices.add(parsedNum);
+              }
+            }
+          }
+
+          // 2. Поиск названия машины (от 3 до 15 букв, игнорируя CR и MIN)
+          final wordRegex = RegExp(r'\b[A-Za-zА-Яа-я]{3,15}\b');
+          final wordMatches = wordRegex.allMatches(raw);
+          List<String> validWords = [];
+          
+          for (final m in wordMatches) {
+            String word = m.group(0)!;
+            if (word.toUpperCase() != "MIN" && word.toUpperCase() != "МИН" && word.toUpperCase() != "CR") {
+              validWords.add(word);
+            }
+          }
+
+          String guessedName = validWords.take(3).join(" ");
+          if (guessedName.isNotEmpty) {
+             _detectedCarName = guessedName;
+          }
+
+          if (validPrices.isNotEmpty) {
+            int minPrice = validPrices.reduce((curr, next) => curr < next ? curr : next);
+            _processPrice(minPrice);
           }
         } catch (e) {
-          debugPrint("ML Kit Error: $e");
           if (mounted) setState(() => _lastRawText = "Ошибка распознавания");
         } finally {
           _isProcessing = false;
         }
       }
-      // Опрос каждые 1.2 секунды — ML Kit работает очень быстро
       await Future.delayed(const Duration(milliseconds: 1200));
     }
   }
 
   void _processPrice(int price) {
     if (price < 100000 || !mounted) return;
-
     setState(() {
       _detectedPrice = price;
       if (price <= 6000000) {
@@ -595,6 +357,60 @@ class _ScannerTabState extends State<ScannerTab> {
     });
   }
 
+  void _showSaveDialog(int currentPrice, String guessedName) {
+    final nameController = TextEditingController(text: guessedName);
+    final priceController = TextEditingController(text: currentPrice.toString());
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text("Сохранить машину", style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: "Название модели",
+                labelStyle: TextStyle(color: Colors.white54),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.greenAccent)),
+              ),
+            ),
+            const SizedBox(height: 15),
+            TextField(
+              controller: priceController,
+              style: const TextStyle(color: Colors.white),
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: "Цена покупки (CR)",
+                labelStyle: TextStyle(color: Colors.white54),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.greenAccent)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ОТМЕНА", style: TextStyle(color: Colors.white54))),
+          TextButton(
+            onPressed: () {
+              String name = nameController.text.trim();
+              if (name.isEmpty) name = "Неизвестная машина";
+              int price = int.tryParse(priceController.text) ?? currentPrice;
+              
+              widget.onAddToPortfolio(name, price);
+              Navigator.pop(ctx);
+            },
+            child: const Text("СОХРАНИТЬ", style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _isScanning = false;
@@ -606,90 +422,46 @@ class _ScannerTabState extends State<ScannerTab> {
   @override
   Widget build(BuildContext context) {
     if (_controller == null || !_controller!.value.isInitialized) {
-      return Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(
-          child: _statusBanner.contains("Ошибка")
-              ? Text(_statusBanner, style: const TextStyle(color: Colors.redAccent))
-              : const CircularProgressIndicator(color: Colors.greenAccent),
-        ),
-      );
+      return Scaffold(backgroundColor: Colors.black, body: Center(child: Text(_statusBanner, style: const TextStyle(color: Colors.redAccent))));
     }
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
           Positioned.fill(child: CameraPreview(_controller!)),
-          
-          // Кнопка фонарика
           Positioned(
             top: 45, right: 20,
             child: FloatingActionButton.small(
               backgroundColor: _isTorchOn ? Colors.amberAccent : Colors.black54,
               onPressed: _toggleTorch,
-              child: Icon(
-                _isTorchOn ? Icons.flash_on : Icons.flash_off,
-                color: _isTorchOn ? Colors.black : Colors.white,
-              ),
+              child: Icon(_isTorchOn ? Icons.flash_on : Icons.flash_off, color: _isTorchOn ? Colors.black : Colors.white),
             ),
           ),
-
-          // Рамка сканирования
           Center(
             child: Container(
               width: 330, height: 130,
               decoration: BoxDecoration(
-                  border: Border.all(
-                    color: _isSnipeAlert ? Colors.greenAccent : Colors.white70,
-                    width: _isSnipeAlert ? 4.0 : 2.5,
-                  ),
-                  boxShadow: _isSnipeAlert
-                      ? [BoxShadow(color: Colors.greenAccent.withOpacity(0.6), blurRadius: 12, spreadRadius: 3)]
-                      : [],
+                  border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white70, width: _isSnipeAlert ? 4.0 : 2.5),
+                  boxShadow: _isSnipeAlert ? [BoxShadow(color: Colors.greenAccent.withOpacity(0.6), blurRadius: 12, spreadRadius: 3)] : [],
                   borderRadius: BorderRadius.circular(12)),
             ),
           ),
-          
-          // Нижняя панель
           Positioned(
             bottom: 20, left: 16, right: 16,
             child: Container(
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.9),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white24, width: 1.5),
-              ),
+              decoration: BoxDecoration(color: Colors.black.withOpacity(0.9), borderRadius: BorderRadius.circular(14), border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white24, width: 1.5)),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.remove_red_eye, color: Colors.greenAccent, size: 14),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          "OCR видит: $_lastRawText",
-                          style: const TextStyle(color: Colors.white60, fontSize: 11),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
+                  Text("OCR видит: $_lastRawText", style: const TextStyle(color: Colors.white60, fontSize: 11), overflow: TextOverflow.ellipsis),
                   const Divider(color: Colors.white24, height: 14),
-                  Text(
-                    _statusBanner,
-                    style: TextStyle(
-                      color: _isSnipeAlert ? Colors.greenAccent : Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                  ),
+                  Text(_statusBanner, style: TextStyle(color: _isSnipeAlert ? Colors.greenAccent : Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
                   if (_detectedPrice > 0) ...[
                     const SizedBox(height: 10),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent),
-                      onPressed: () => widget.onAddToPortfolio(_currentSlot, _detectedPrice),
+                      onPressed: () => _showSaveDialog(_detectedPrice, _detectedCarName),
                       child: const Text("СОХРАНИТЬ В РАДАР", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
                     )
                   ]
@@ -704,7 +476,7 @@ class _ScannerTabState extends State<ScannerTab> {
 }
 
 // ==========================================
-// 3. РАДАР (ПОРТФЕЛЬ)
+// 3. РАДАР С РЕДАКТИРОВАНИЕМ И УДАЛЕНИЕМ (СВАЙПОМ)
 // ==========================================
 class WatchlistTab extends StatefulWidget {
   final List<WatchlistItem> portfolio;
@@ -716,6 +488,52 @@ class WatchlistTab extends StatefulWidget {
 }
 
 class _WatchlistTabState extends State<WatchlistTab> {
+  
+  void _showEditDialog(BuildContext context, int index) {
+    final item = widget.portfolio[index];
+    final nameController = TextEditingController(text: item.name);
+    final priceController = TextEditingController(text: item.buyPrice.toString());
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text("Редактировать лот", style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(labelText: "Название", labelStyle: TextStyle(color: Colors.white54)),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: priceController,
+              style: const TextStyle(color: Colors.white),
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: "Цена покупки (CR)", labelStyle: TextStyle(color: Colors.white54)),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ОТМЕНА", style: TextStyle(color: Colors.white54))),
+          TextButton(
+            onPressed: () {
+              setState(() {
+                item.name = nameController.text.trim();
+                item.buyPrice = int.tryParse(priceController.text) ?? item.buyPrice;
+              });
+              widget.onUpdate();
+              Navigator.pop(ctx);
+            },
+            child: const Text("СОХРАНИТЬ", style: TextStyle(color: Colors.greenAccent)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -729,40 +547,56 @@ class _WatchlistTabState extends State<WatchlistTab> {
                 final item = widget.portfolio[i];
                 final netProfit = (item.targetPrice * 0.85).round() - item.buyPrice;
                 
-                return Card(
-                  color: const Color(0xFF1E1E1E),
-                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  child: ListTile(
-                    title: Text(item.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    subtitle: Text("Куплено: ${item.buyPrice} CR\nДобавлено: ${item.dateAdded}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
-                    isThreeLine: true,
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text("+$netProfit CR", style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 13)),
-                        const SizedBox(height: 4),
-                        InkWell(
-                          onTap: () {
-                            setState(() {
-                              item.status = item.status == "HOLD" ? "READY" : "HOLD";
-                            });
-                            widget.onUpdate();
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: item.status == "READY" ? Colors.green.shade800 : Colors.grey.shade800,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              item.status == "READY" ? "🟢 ГОТОВ К ПРОДАЖЕ" : "🟡 ОТЛЕЖКА",
-                              style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
-                            ),
+                return Dismissible(
+                  key: Key(item.id),
+                  direction: DismissDirection.endToStart,
+                  background: Container(
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 20),
+                    color: Colors.redAccent,
+                    child: const Icon(Icons.delete, color: Colors.white),
+                  ),
+                  onDismissed: (direction) {
+                    setState(() { widget.portfolio.removeAt(i); });
+                    widget.onUpdate();
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Лот удален"), duration: Duration(seconds: 2)));
+                  },
+                  child: Card(
+                    color: const Color(0xFF1E1E1E),
+                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    child: ListTile(
+                      title: Text(item.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      subtitle: Text("Куплено: ${item.buyPrice} CR\nДобавлено: ${item.dateAdded}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                      isThreeLine: true,
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text("${netProfit >= 0 ? '+' : ''}$netProfit CR", style: TextStyle(color: netProfit >= 0 ? Colors.greenAccent : Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 13)),
+                              const SizedBox(height: 4),
+                              InkWell(
+                                onTap: () {
+                                  setState(() { item.status = item.status == "HOLD" ? "READY" : "HOLD"; });
+                                  widget.onUpdate();
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(color: item.status == "READY" ? Colors.green.shade800 : Colors.grey.shade800, borderRadius: BorderRadius.circular(6)),
+                                  child: Text(item.status == "READY" ? "🟢 ПРОДАТЬ" : "🟡 ОТЛЕЖКА", style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.white54, size: 20),
+                            onPressed: () => _showEditDialog(context, i),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );
