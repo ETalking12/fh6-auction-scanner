@@ -52,12 +52,12 @@ class WatchlistItem {
       };
 
   factory WatchlistItem.fromMap(Map<String, dynamic> map) => WatchlistItem(
-        id: map["id"] ?? "",
-        name: map["name"] ?? "Неизвестно",
-        buyPrice: map["buyPrice"] ?? 0,
-        targetPrice: map["targetPrice"] ?? 20000000,
-        status: map["status"] ?? "HOLD",
-        dateAdded: map["dateAdded"] ?? "",
+        id: map["id"]?.toString() ?? "",
+        name: map["name"]?.toString() ?? "Неизвестно",
+        buyPrice: (map["buyPrice"] as num?)?.toInt() ?? 0,
+        targetPrice: (map["targetPrice"] as num?)?.toInt() ?? 20000000,
+        status: map["status"]?.toString() ?? "HOLD",
+        dateAdded: map["dateAdded"]?.toString() ?? "",
       );
 }
 
@@ -84,9 +84,11 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
     if (raw != null) {
       try {
         final List decoded = jsonDecode(raw);
-        setState(() {
-          _portfolio = decoded.map((e) => WatchlistItem.fromMap(e)).toList();
-        });
+        if (mounted) {
+          setState(() {
+            _portfolio = decoded.map((e) => WatchlistItem.fromMap(e)).toList();
+          });
+        }
       } catch (e) {
         debugPrint("Ошибка загрузки портфеля: $e");
       }
@@ -161,14 +163,14 @@ class SmartAdvisorTab extends StatefulWidget {
 class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   final TextEditingController _keyController = TextEditingController();
 
-  String _selectedProvider = "groq";
+  String _selectedProvider = "openrouter";
   String _geminiKey = "";
   String _groqKey = "";
+  String _openRouterKey = "";
 
   bool _isAnalyzing = false;
   String _statusMessage = "";
   Map<String, dynamic>? _structuredData;
-  String? _rawAnalysisFallback;
   String _lastUpdatedTime = "";
 
   @override
@@ -177,21 +179,37 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     _loadState();
   }
 
+  @override
+  void dispose() {
+    _keyController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadState() async {
     final prefs = await SharedPreferences.getInstance();
-    final provider = prefs.getString("ai_provider_selection") ?? "groq";
+    final provider = prefs.getString("ai_provider_selection") ?? "openrouter";
     final gKey = (prefs.getString("gemini_user_api_key") ?? "").trim();
     final rKey = (prefs.getString("groq_user_api_key") ?? "").trim();
+    final oKey = (prefs.getString("openrouter_user_api_key") ?? "").trim();
 
     final cachedJson = prefs.getString("ai_season_analysis_json");
-    final cachedRaw = prefs.getString("ai_season_analysis_raw");
     final updated = prefs.getString("ai_season_analysis_time") ?? "";
 
+    if (!mounted) return;
     setState(() {
       _selectedProvider = provider;
       _geminiKey = gKey;
       _groqKey = rKey;
-      _keyController.text = (provider == "gemini") ? gKey : rKey;
+      _openRouterKey = oKey;
+
+      if (provider == "gemini") {
+        _keyController.text = gKey;
+      } else if (provider == "groq") {
+        _keyController.text = rKey;
+      } else {
+        _keyController.text = oKey;
+      }
+
       _lastUpdatedTime = updated;
 
       if (cachedJson != null) {
@@ -199,15 +217,19 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
           _structuredData = jsonDecode(cachedJson);
         } catch (_) {}
       }
-      _rawAnalysisFallback = cachedRaw;
 
-      if (_structuredData == null && _rawAnalysisFallback == null) {
-        _statusMessage = ((provider == "gemini" && gKey.isEmpty) ||
-                (provider == "groq" && rKey.isEmpty))
+      if (_structuredData == null) {
+        _statusMessage = _getCurrentKey().isEmpty
             ? "Введите API ключ для выбранного провайдера."
             : "Нажмите кнопку, чтобы получить детальный анализ сезона.";
       }
     });
+  }
+
+  String _getCurrentKey() {
+    if (_selectedProvider == "gemini") return _geminiKey;
+    if (_selectedProvider == "groq") return _groqKey;
+    return _openRouterKey;
   }
 
   Future<void> _saveApiKey() async {
@@ -217,11 +239,15 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     if (_selectedProvider == "gemini") {
       await prefs.setString("gemini_user_api_key", key);
       setState(() => _geminiKey = key);
-    } else {
+    } else if (_selectedProvider == "groq") {
       await prefs.setString("groq_user_api_key", key);
       setState(() => _groqKey = key);
+    } else {
+      await prefs.setString("openrouter_user_api_key", key);
+      setState(() => _openRouterKey = key);
     }
 
+    if (!mounted) return;
     FocusScope.of(context).unfocus();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Ключ сохранен в памяти устройства"), duration: Duration(seconds: 2)),
@@ -231,44 +257,51 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   Future<void> _switchProvider(String? provider) async {
     if (provider == null || provider == _selectedProvider) return;
 
-    // Сохраняем текущий набранный текст перед переключением
     final currentInput = _keyController.text.trim();
     final prefs = await SharedPreferences.getInstance();
 
-    if (_selectedProvider == "gemini" && currentInput.isNotEmpty) {
+    if (_selectedProvider == "gemini") {
       _geminiKey = currentInput;
       await prefs.setString("gemini_user_api_key", currentInput);
-    } else if (_selectedProvider == "groq" && currentInput.isNotEmpty) {
+    } else if (_selectedProvider == "groq") {
       _groqKey = currentInput;
       await prefs.setString("groq_user_api_key", currentInput);
+    } else {
+      _openRouterKey = currentInput;
+      await prefs.setString("openrouter_user_api_key", currentInput);
     }
 
     await prefs.setString("ai_provider_selection", provider);
 
+    if (!mounted) return;
     setState(() {
       _selectedProvider = provider;
-      _keyController.text = (provider == "gemini") ? _geminiKey : _groqKey;
+      if (provider == "gemini") {
+        _keyController.text = _geminiKey;
+      } else if (provider == "groq") {
+        _keyController.text = _groqKey;
+      } else {
+        _keyController.text = _openRouterKey;
+      }
     });
   }
 
-  Future<void> _saveAnalysisResult({required Map<String, dynamic> structured, required String raw}) async {
+  Future<void> _saveAnalysisResult(Map<String, dynamic> structured) async {
     final prefs = await SharedPreferences.getInstance();
     final nowStr =
         "${DateTime.now().day.toString().padLeft(2, '0')}.${DateTime.now().month.toString().padLeft(2, '0')} ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}";
 
     await prefs.setString("ai_season_analysis_json", jsonEncode(structured));
-    await prefs.setString("ai_season_analysis_raw", raw);
     await prefs.setString("ai_season_analysis_time", nowStr);
 
+    if (!mounted) return;
     setState(() {
       _structuredData = structured;
-      _rawAnalysisFallback = null;
       _lastUpdatedTime = nowStr;
       _statusMessage = "";
     });
   }
 
-  // Расчет актуального сезона по четвергам 14:30 UTC
   String _determineCurrentSeason(Map<String, dynamic>? feedJson) {
     if (feedJson != null &&
         feedJson.containsKey("current_season") &&
@@ -276,7 +309,6 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       return feedJson["current_season"].toString().trim();
     }
 
-    // Точка отсчёта: 10 сентября 2026, 14:30 UTC = Старт серии 39, Сезон Summer
     final anchor = DateTime.utc(2026, 9, 10, 14, 30);
     final now = DateTime.now().toUtc();
     final diffMs = now.difference(anchor).inMilliseconds;
@@ -301,59 +333,33 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     }
   }
 
-  Future<String> _findActiveGroqModel(String apiKey) async {
-    try {
-      final uri = Uri.https('api.groq.com', '/openai/v1/models');
-      final res = await http.get(
-        uri,
-        headers: {
-          "Authorization": "Bearer $apiKey",
-          "Content-Type": "application/json"
-        },
-      ).timeout(const Duration(seconds: 8));
-
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final List models = data['data'] ?? [];
-        for (var m in models) {
-          final String id = m['id'] ?? '';
-          if (id.contains('instant') || id.contains('8b') || id.contains('versatile')) {
-            return id;
-          }
-        }
-      }
-    } catch (_) {}
-    return 'llama-3.1-8b-instant';
-  }
-
-  // Чистый извлекатель JSON из любого текста ответа нейросети
   Map<String, dynamic>? _extractJsonSafely(String rawText) {
     try {
       final match = RegExp(r'\{[\s\S]*\}').firstMatch(rawText);
       if (match != null) {
-        final candidate = match.group(0)!;
-        return jsonDecode(candidate) as Map<String, dynamic>;
+        final decoded = jsonDecode(match.group(0)!);
+        if (decoded is Map<String, dynamic>) return decoded;
       }
     } catch (_) {}
     return null;
   }
 
   Future<void> _runAutoAnalysis() async {
-    final currentKey = (_selectedProvider == "gemini" ? _geminiKey : _groqKey).trim();
+    final currentKey = _getCurrentKey().trim();
     if (currentKey.isEmpty) {
-      setState(() => _statusMessage = "Сначала сохраните API ключ для выбранного провайдера!");
+      setState(() => _statusMessage = "Сначала введите и сохраните API ключ!");
       return;
     }
 
     setState(() {
       _isAnalyzing = true;
-      _statusMessage = "Загрузка данных плейлиста...";
+      _statusMessage = "Загрузка официальных наград сезона...";
     });
 
     try {
       final feedRes = await http.get(Uri.parse(PLAYLIST_FEED_URL)).timeout(const Duration(seconds: 15));
       if (!mounted) return;
-      if (feedRes.statusCode != 200) throw Exception("Данные плейлиста недоступны (Код ${feedRes.statusCode})");
+      if (feedRes.statusCode != 200) throw Exception("Сервер наград недоступен (Код ${feedRes.statusCode})");
 
       final String rawFeedData = feedRes.body;
       Map<String, dynamic>? parsedFeed;
@@ -366,11 +372,11 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
 
       final prompt = '''
 Ты — эксперт по аукционам Forza Horizon.
-ВАЖНО: ПРЯМО СЕЙЧАС В ИГРЕ ИДЕТ СЕЗОН: $calculatedSeason.
-Ниже официальный список наград сезона в JSON:
+ВАЖНО: В ИГРЕ СЕЙЧАС ИДЕТ СЕЗОН: $calculatedSeason.
+Ниже приведены официальные награды плейлиста в JSON:
 $rawFeedData
 
-Верни ответ ТОЛЬКО в валидном JSON (без кавычек ```json и без markdown):
+Верни ответ ТОЛЬКО в чистом JSON без кавычек ```json и markdown:
 {
   "current_season": "$calculatedSeason",
   "series_number": "Series $seriesNumber",
@@ -380,14 +386,41 @@ $rawFeedData
   "cars_40pts": [
     {"name": "Точное название", "season": "Summer/Autumn/Winter/Spring", "est_value": "Оценка CR"}
   ],
-  "trading_advice": "Стратегия для сезона $calculatedSeason: какие машины выкупать, когда продавать за 20M CR."
+  "trading_advice": "Стратегия для сезона $calculatedSeason: кого снайпить прямо сейчас, когда продавать за 20M CR."
 }
 ''';
 
       String? successfulText;
       String lastError = "";
 
-      if (_selectedProvider == "gemini") {
+      if (_selectedProvider == "openrouter") {
+        setState(() => _statusMessage = "Анализ через OpenRouter (Llama 3.3 Free)...");
+        final apiUrl = Uri.https('openrouter.ai', '/api/v1/chat/completions');
+
+        final aiRes = await http.post(
+          apiUrl,
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer $currentKey",
+            "HTTP-Referer": "[https://github.com/ETalking12/fh6-auction-scanner](https://github.com/ETalking12/fh6-auction-scanner)",
+            "X-Title": "FH6 Scanner"
+          },
+          body: jsonEncode({
+            "model": "meta-llama/llama-3.3-70b-instruct:free",
+            "messages": [
+              {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.2
+          }),
+        ).timeout(const Duration(seconds: 40));
+
+        if (aiRes.statusCode == 200) {
+          final jsonResult = jsonDecode(aiRes.body);
+          successfulText = jsonResult['choices']?[0]?['message']?['content'];
+        } else {
+          lastError = "Ошибка OpenRouter (HTTP ${aiRes.statusCode}): ${aiRes.body}";
+        }
+      } else if (_selectedProvider == "gemini") {
         final geminiModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
 
         for (final modelName in geminiModels) {
@@ -433,10 +466,7 @@ $rawFeedData
           if (successfulText != null) break;
         }
       } else {
-        setState(() => _statusMessage = "Поиск активной модели Groq...");
-        final activeGroqModel = await _findActiveGroqModel(currentKey);
-
-        setState(() => _statusMessage = "Анализ через Groq ($activeGroqModel)...");
+        setState(() => _statusMessage = "Анализ через Groq...");
         final apiUrl = Uri.https('api.groq.com', '/openai/v1/chat/completions');
 
         final aiRes = await http.post(
@@ -446,7 +476,7 @@ $rawFeedData
             "Authorization": "Bearer $currentKey"
           },
           body: jsonEncode({
-            "model": activeGroqModel,
+            "model": "llama-3.1-8b-instant",
             "messages": [
               {"role": "user", "content": prompt}
             ],
@@ -468,9 +498,8 @@ $rawFeedData
         final parsed = _extractJsonSafely(successfulText);
         if (parsed != null) {
           parsed['current_season'] = calculatedSeason;
-          await _saveAnalysisResult(structured: parsed, raw: successfulText);
+          await _saveAnalysisResult(parsed);
         } else {
-          // Гарантированный фоллбэк: собираем структуру из исходного плейлиста
           final fallbackData = <String, dynamic>{
             "current_season": calculatedSeason,
             "series_number": "Series $seriesNumber",
@@ -488,7 +517,7 @@ $rawFeedData
             ],
             "trading_advice": successfulText.replaceAll(RegExp(r'[`*#{}]'), '').trim(),
           };
-          await _saveAnalysisResult(structured: fallbackData, raw: successfulText);
+          await _saveAnalysisResult(fallbackData);
         }
       } else {
         setState(() => _statusMessage = lastError.isNotEmpty ? lastError : "Не удалось получить ответ.");
@@ -525,32 +554,46 @@ $rawFeedData
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                const Text("Провайдер:", style: TextStyle(color: Colors.white54, fontSize: 12)),
-                const SizedBox(width: 10),
-                ChoiceChip(
-                  label: const Text("Groq (Llama)", style: TextStyle(fontSize: 12)),
-                  selected: _selectedProvider == "groq",
-                  selectedColor: Colors.greenAccent,
-                  backgroundColor: const Color(0xFF1E1E1E),
-                  labelStyle: TextStyle(
-                      color: _selectedProvider == "groq" ? Colors.black : Colors.white,
-                      fontWeight: FontWeight.bold),
-                  onSelected: (val) => _switchProvider("groq"),
-                ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text("Gemini", style: TextStyle(fontSize: 12)),
-                  selected: _selectedProvider == "gemini",
-                  selectedColor: Colors.greenAccent,
-                  backgroundColor: const Color(0xFF1E1E1E),
-                  labelStyle: TextStyle(
-                      color: _selectedProvider == "gemini" ? Colors.black : Colors.white,
-                      fontWeight: FontWeight.bold),
-                  onSelected: (val) => _switchProvider("gemini"),
-                ),
-              ],
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  const Text("ИИ:", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text("OpenRouter (Free)", style: TextStyle(fontSize: 11)),
+                    selected: _selectedProvider == "openrouter",
+                    selectedColor: Colors.greenAccent,
+                    backgroundColor: const Color(0xFF1E1E1E),
+                    labelStyle: TextStyle(
+                        color: _selectedProvider == "openrouter" ? Colors.black : Colors.white,
+                        fontWeight: FontWeight.bold),
+                    onSelected: (val) => _switchProvider("openrouter"),
+                  ),
+                  const SizedBox(width: 6),
+                  ChoiceChip(
+                    label: const Text("Gemini", style: TextStyle(fontSize: 11)),
+                    selected: _selectedProvider == "gemini",
+                    selectedColor: Colors.greenAccent,
+                    backgroundColor: const Color(0xFF1E1E1E),
+                    labelStyle: TextStyle(
+                        color: _selectedProvider == "gemini" ? Colors.black : Colors.white,
+                        fontWeight: FontWeight.bold),
+                    onSelected: (val) => _switchProvider("gemini"),
+                  ),
+                  const SizedBox(width: 6),
+                  ChoiceChip(
+                    label: const Text("Groq", style: TextStyle(fontSize: 11)),
+                    selected: _selectedProvider == "groq",
+                    selectedColor: Colors.greenAccent,
+                    backgroundColor: const Color(0xFF1E1E1E),
+                    labelStyle: TextStyle(
+                        color: _selectedProvider == "groq" ? Colors.black : Colors.white,
+                        fontWeight: FontWeight.bold),
+                    onSelected: (val) => _switchProvider("groq"),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 10),
             Row(
@@ -561,10 +604,12 @@ $rawFeedData
                     obscureText: true,
                     style: const TextStyle(color: Colors.white, fontSize: 13),
                     decoration: InputDecoration(
-                      hintText: _selectedProvider == "gemini"
-                          ? "Gemini ключ (AIzaSy...)"
-                          : "Groq ключ (gsk_...)",
-                      hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
+                      hintText: _selectedProvider == "openrouter"
+                          ? "Ключ OpenRouter (sk-or-v1-...)"
+                          : (_selectedProvider == "gemini"
+                              ? "Ключ Gemini (AIzaSy...)"
+                              : "Ключ Groq (gsk_...)"),
+                      hintStyle: const TextStyle(color: Colors.white38, fontSize: 11),
                       filled: true,
                       fillColor: const Color(0xFF1E1E1E),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -610,12 +655,10 @@ $rawFeedData
             Expanded(
               child: _structuredData != null
                   ? _buildStructuredView(_structuredData!)
-                  : (_rawAnalysisFallback != null
-                      ? _buildFallbackView(_rawAnalysisFallback!)
-                      : Center(
-                          child: Text(
-                              _statusMessage.isEmpty ? "Нет сохраненных данных" : _statusMessage,
-                              style: const TextStyle(color: Colors.white38)))),
+                  : Center(
+                      child: Text(
+                          _statusMessage.isEmpty ? "Нет сохраненных данных" : _statusMessage,
+                          style: const TextStyle(color: Colors.white38))),
             ),
           ],
         ),
@@ -624,11 +667,11 @@ $rawFeedData
   }
 
   Widget _buildStructuredView(Map<String, dynamic> data) {
-    final season = data['current_season'] ?? "WINTER";
-    final series = data['series_number'] ?? "Series 39";
-    final advice = data['trading_advice'] ?? "";
-    final List cars20 = data['cars_20pts'] ?? [];
-    final List cars40 = data['cars_40pts'] ?? [];
+    final season = data['current_season']?.toString() ?? "WINTER";
+    final series = data['series_number']?.toString() ?? "Series 39";
+    final advice = data['trading_advice']?.toString() ?? "";
+    final List cars20 = (data['cars_20pts'] is List) ? data['cars_20pts'] : [];
+    final List cars40 = (data['cars_40pts'] is List) ? data['cars_40pts'] : [];
 
     return ListView(
       physics: const BouncingScrollPhysics(),
@@ -649,7 +692,7 @@ $rawFeedData
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(season.toString().toUpperCase(),
+                    Text(season.toUpperCase(),
                         style: const TextStyle(
                             color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                     if (series.isNotEmpty)
@@ -720,10 +763,19 @@ $rawFeedData
     );
   }
 
-  Widget _buildCarCard(dynamic carMap, Color accentColor, String activeSeason) {
-    final name = carMap['name'] ?? "Автомобиль";
-    final val = carMap['est_value'] ?? "";
-    final carSeason = (carMap['season'] ?? "").toString();
+  Widget _buildCarCard(dynamic carData, Color accentColor, String activeSeason) {
+    String name = "Автомобиль";
+    String val = "";
+    String carSeason = "";
+
+    if (carData is Map) {
+      name = carData['name']?.toString() ?? "Автомобиль";
+      val = carData['est_value']?.toString() ?? "";
+      carSeason = carData['season']?.toString() ?? "";
+    } else if (carData is String) {
+      name = carData;
+    }
+
     final isCurrent = carSeason.toLowerCase().contains(activeSeason.toLowerCase());
 
     return Card(
@@ -767,20 +819,6 @@ $rawFeedData
                     fontWeight: FontWeight.bold,
                     fontSize: 12))
             : null,
-      ),
-    );
-  }
-
-  Widget _buildFallbackView(String text) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-          color: const Color(0xFF1E1E1E),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white12)),
-      child: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        child: Text(text, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.45)),
       ),
     );
   }
@@ -829,6 +867,7 @@ class _ScannerTabState extends State<ScannerTab> {
   }
 
   Future<void> _captureAndAnalyze() async {
+    if (!mounted) return;
     _isProcessing = true;
     try {
       final photo = await _controller!.takePicture();
@@ -844,7 +883,7 @@ class _ScannerTabState extends State<ScannerTab> {
   }
 
   void _processPrice(int price) {
-    if (price < 10000) return;
+    if (price < 10000 || !mounted) return;
     _observedHistory.putIfAbsent(_currentSlot, () => []).add(price);
     if (_observedHistory[_currentSlot]!.length > 20) _observedHistory[_currentSlot]!.removeAt(0);
 
