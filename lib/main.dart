@@ -134,7 +134,7 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
 }
 
 // ==========================================
-// 1. ИИ-АНАЛИТИК САЙТА (С автосохранением и карточками)
+// 1. ИИ-АНАЛИТИК САЙТА
 // ==========================================
 class SmartAdvisorTab extends StatefulWidget {
   const SmartAdvisorTab({super.key});
@@ -160,7 +160,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
 
   Future<void> _loadState() async {
     final prefs = await SharedPreferences.getInstance();
-    final key = prefs.getString("gemini_user_api_key") ?? "";
+    final key = (prefs.getString("gemini_user_api_key") ?? "").trim();
     final cachedJson = prefs.getString("ai_season_analysis_json");
     final cachedRaw = prefs.getString("ai_season_analysis_raw");
     final updated = prefs.getString("ai_season_analysis_time") ?? "";
@@ -221,16 +221,18 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   Future<List<String>> _getAvailableModelPool(String apiKey) async {
     List<String> pool = [];
     try {
-      final url = Uri.parse("https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey");
-      final res = await http.get(url).timeout(const Duration(seconds: 10));
+      final safeKey = Uri.encodeComponent(apiKey.trim());
+      final uri = Uri.parse("https://generativelanguage.googleapis.com/v1beta/models?key=$safeKey");
+      final res = await http.get(uri).timeout(const Duration(seconds: 10));
       
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final List models = data['models'] ?? [];
         for (var m in models) {
-          final String name = (m['name'] ?? '').replaceFirst('models/', '');
+          String name = (m['name'] ?? '').toString().trim();
+          name = name.replaceFirst('models/', '');
           final List methods = m['supportedGenerationMethods'] ?? [];
-          if (methods.contains('generateContent')) {
+          if (methods.contains('generateContent') && name.isNotEmpty) {
             pool.add(name);
           }
         }
@@ -250,7 +252,8 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   }
 
   Future<void> _runAutoAnalysis() async {
-    if (_savedApiKey.isEmpty) {
+    final cleanKey = _savedApiKey.trim();
+    if (cleanKey.isEmpty) {
       setState(() => _statusMessage = "Сначала сохраните Gemini API ключ!");
       return;
     }
@@ -261,8 +264,8 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     });
 
     try {
-      final siteUrl = Uri.parse('https://forza.net/fh6playlists');
-      final siteRes = await http.get(siteUrl).timeout(const Duration(seconds: 20));
+      final siteUri = Uri.parse("https://forza.net/fh6playlists");
+      final siteRes = await http.get(siteUri).timeout(const Duration(seconds: 20));
       
       if (!mounted) return;
       if (siteRes.statusCode != 200) throw Exception("Сайт недоступен (Код ${siteRes.statusCode})");
@@ -270,24 +273,23 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       String cleanText = siteRes.body.replaceAll(RegExp(r'<[^>]*>'), ' ').replaceAll(RegExp(r'\s+'), ' ');
 
       setState(() => _statusMessage = "Поиск активной модели Gemini...");
-      final models = await _getAvailableModelPool(_savedApiKey);
+      final models = await _getAvailableModelPool(cleanKey);
 
-      // Строгий промпт для получения чистого JSON
       final prompt = '''
       Ты — эксперт по экономике Forza Horizon. Сегодня: ${DateTime.now()}.
       Проанализируй текст с сайта forza.net/fh6playlists и верни ответ СТРОГО в формате JSON без markdown блоков, кавычек ```json или дополнительного текста.
 
       Структура JSON:
       {
-        "current_season": "Название текущего сезона (например, Лето / Summer)",
-        "series_number": "Номер серии (например, Серия 39)",
+        "current_season": "Название текущего сезона",
+        "series_number": "Номер серии",
         "cars_20pts": [
-          {"name": "Название машины", "season": "Лето", "est_value": "20,000,000 CR"}
+          {"name": "Название машины", "season": "Сезон", "est_value": "Оценка стоимости"}
         ],
         "cars_40pts": [
-          {"name": "Название машины", "season": "Лето", "est_value": "15,000,000 CR"}
+          {"name": "Название машины", "season": "Сезон", "est_value": "Оценка стоимости"}
         ],
-        "trading_advice": "Подробный совет: какие машины снайпить прямо сейчас, когда фиксировать профит и какие держать в HOLD."
+        "trading_advice": "Рекомендации по снайпингу и перепродаже."
       }
 
       Текст сайта:
@@ -297,12 +299,13 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       String? successfulText;
       String lastError = "";
 
-      for (final modelName in models.take(3)) {
+      for (final rawModel in models.take(3)) {
+        final modelName = rawModel.trim();
         for (int attempt = 1; attempt <= 2; attempt++) {
           if (!mounted) return;
           setState(() => _statusMessage = "Анализ через $modelName (попытка $attempt)...");
 
-          final apiUrl = Uri.parse("[https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$_savedApiKey](https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$_savedApiKey)");
+          final apiUrl = Uri.parse("[https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$){Uri.encodeComponent(cleanKey)}");
           final aiRes = await http.post(
             apiUrl,
             headers: {"Content-Type": "application/json"},
@@ -335,7 +338,6 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       if (!mounted) return;
 
       if (successfulText != null) {
-        // Очищаем от возможных markdown-оберток ```json ... ```
         String raw = successfulText.trim();
         if (raw.startsWith("```json")) raw = raw.substring(7);
         if (raw.startsWith("```")) raw = raw.substring(3);
@@ -346,7 +348,6 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
           final Map<String, dynamic> parsed = jsonDecode(raw);
           await _saveAnalysisResult(structured: parsed, raw: raw);
         } catch (_) {
-          // Если модель ответила простым текстом
           await _saveAnalysisResult(raw: successfulText);
         }
       } else {
@@ -385,7 +386,6 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Поле ввода API ключа
             Row(
               children: [
                 Expanded(
@@ -452,7 +452,6 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     return ListView(
       physics: const BouncingScrollPhysics(),
       children: [
-        // Заголовок текущего сезона
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -485,7 +484,6 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
         ),
         const SizedBox(height: 14),
 
-        // Награды 20 PTS
         if (cars20.isNotEmpty) ...[
           const Text("🏆 НАГРАДЫ 20 PTS (ОСНОВНЫЕ)", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
           const SizedBox(height: 6),
@@ -493,7 +491,6 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
           const SizedBox(height: 12),
         ],
 
-        // Награды 40 PTS
         if (cars40.isNotEmpty) ...[
           const Text("⭐ НАГРАДЫ 40 PTS (ВТОРОСТЕПЕННЫЕ)", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
           const SizedBox(height: 6),
@@ -501,7 +498,6 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
           const SizedBox(height: 12),
         ],
 
-        // Совет советника
         if (advice.isNotEmpty) ...[
           const Text("💡 ИНВЕСТИЦИОННЫЙ СОВЕТ", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
           const SizedBox(height: 6),
