@@ -221,8 +221,11 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   Future<List<String>> _getAvailableModelPool(String apiKey) async {
     List<String> pool = [];
     try {
-      final safeKey = Uri.encodeComponent(apiKey.trim());
-      final uri = Uri.parse("https://generativelanguage.googleapis.com/v1beta/models?key=$safeKey");
+      final uri = Uri.https(
+        'generativelanguage.googleapis.com',
+        '/v1beta/models',
+        {'key': apiKey},
+      );
       final res = await http.get(uri).timeout(const Duration(seconds: 10));
       
       if (res.statusCode == 200) {
@@ -247,7 +250,9 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       return 0;
     });
 
-    if (!pool.contains('gemini-3.8-flash')) pool.insert(0, 'gemini-3.8-flash');
+    if (!pool.contains('gemini-3.8-flash')) {
+      pool.insert(0, 'gemini-3.8-flash');
+    }
     return pool;
   }
 
@@ -264,7 +269,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     });
 
     try {
-      final siteUri = Uri.parse("https://forza.net/fh6playlists");
+      final siteUri = Uri.https('forza.net', '/fh6playlists');
       final siteRes = await http.get(siteUri).timeout(const Duration(seconds: 20));
       
       if (!mounted) return;
@@ -305,8 +310,12 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
           if (!mounted) return;
           setState(() => _statusMessage = "Анализ через $modelName (попытка $attempt)...");
 
-          final encodedKey = Uri.encodeComponent(cleanKey);
-          final apiUrl = Uri.parse("[https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$encodedKey](https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$encodedKey)");
+          final apiUrl = Uri.https(
+            'generativelanguage.googleapis.com',
+            '/v1beta/models/$modelName:generateContent',
+            {'key': cleanKey},
+          );
+
           final aiRes = await http.post(
             apiUrl,
             headers: {"Content-Type": "application/json"},
