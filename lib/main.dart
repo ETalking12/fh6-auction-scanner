@@ -134,7 +134,7 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
 }
 
 // ==========================================
-// 1. ИИ-АНАЛИТИК САЙТА (Gemini 3.8 Flash)
+// 1. ИИ-АНАЛИТИК САЙТА (С автосохранением и карточками)
 // ==========================================
 class SmartAdvisorTab extends StatefulWidget {
   const SmartAdvisorTab({super.key});
@@ -147,22 +147,40 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   final TextEditingController _keyController = TextEditingController();
   String _savedApiKey = "";
   bool _isAnalyzing = false;
-  String _aiResponse = "Введите ваш Gemini API ключ ниже, чтобы разблокировать ИИ...";
+  String _statusMessage = "";
+  Map<String, dynamic>? _structuredData;
+  String? _rawAnalysisFallback;
+  String _lastUpdatedTime = "";
 
   @override
   void initState() {
     super.initState();
-    _loadApiKey();
+    _loadState();
   }
 
-  Future<void> _loadApiKey() async {
+  Future<void> _loadState() async {
     final prefs = await SharedPreferences.getInstance();
     final key = prefs.getString("gemini_user_api_key") ?? "";
+    final cachedJson = prefs.getString("ai_season_analysis_json");
+    final cachedRaw = prefs.getString("ai_season_analysis_raw");
+    final updated = prefs.getString("ai_season_analysis_time") ?? "";
+
     setState(() {
       _savedApiKey = key;
       _keyController.text = key;
-      if (key.isNotEmpty) {
-        _aiResponse = "Ключ загружен. Нажмите кнопку, чтобы проанализировать сайт forza.net/fh6playlists.";
+      _lastUpdatedTime = updated;
+
+      if (cachedJson != null) {
+        try {
+          _structuredData = jsonDecode(cachedJson);
+        } catch (_) {}
+      }
+      _rawAnalysisFallback = cachedRaw;
+
+      if (_structuredData == null && _rawAnalysisFallback == null) {
+        _statusMessage = key.isEmpty 
+            ? "Введите ваш Gemini API ключ, чтобы разблокировать ИИ."
+            : "Нажмите кнопку, чтобы получить свежий анализ сезонов.";
       }
     });
   }
@@ -173,17 +191,35 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     await prefs.setString("gemini_user_api_key", key);
     setState(() {
       _savedApiKey = key;
-      _aiResponse = key.isNotEmpty 
-          ? "Ключ успешно сохранен! Нажмите «Спросить ИИ о сезонах»." 
-          : "Ключ удален.";
     });
     FocusScope.of(context).unfocus();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Настройки ключа обновлены"), duration: Duration(seconds: 2)),
+      const SnackBar(content: Text("Ключ сохранен в памяти устройства"), duration: Duration(seconds: 2)),
     );
   }
 
-  Future<String> _findActiveModel(String apiKey) async {
+  Future<void> _saveAnalysisResult({Map<String, dynamic>? structured, String? raw}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final nowStr = "${DateTime.now().day.toString().padLeft(2, '0')}.${DateTime.now().month.toString().padLeft(2, '0')} ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}";
+    
+    if (structured != null) {
+      await prefs.setString("ai_season_analysis_json", jsonEncode(structured));
+    }
+    if (raw != null) {
+      await prefs.setString("ai_season_analysis_raw", raw);
+    }
+    await prefs.setString("ai_season_analysis_time", nowStr);
+
+    setState(() {
+      _structuredData = structured;
+      _rawAnalysisFallback = raw;
+      _lastUpdatedTime = nowStr;
+      _statusMessage = "";
+    });
+  }
+
+  Future<List<String>> _getAvailableModelPool(String apiKey) async {
+    List<String> pool = [];
     try {
       final url = Uri.parse("https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey");
       final res = await http.get(url).timeout(const Duration(seconds: 10));
@@ -191,94 +227,134 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final List models = data['models'] ?? [];
-        
-        // 1. Приоритет: новейшие модели поколения 3.x
         for (var m in models) {
-          final String name = m['name'] ?? '';
+          final String name = (m['name'] ?? '').replaceFirst('models/', '');
           final List methods = m['supportedGenerationMethods'] ?? [];
-          if (methods.contains('generateContent') && name.contains('3.8-flash')) {
-            return name.replaceFirst('models/', '');
-          }
-        }
-
-        // 2. Любая доступная модель ветки 3.x
-        for (var m in models) {
-          final String name = m['name'] ?? '';
-          final List methods = m['supportedGenerationMethods'] ?? [];
-          if (methods.contains('generateContent') && name.contains('gemini-3.')) {
-            return name.replaceFirst('models/', '');
+          if (methods.contains('generateContent')) {
+            pool.add(name);
           }
         }
       }
     } catch (_) {}
-    // Стандартное имя актуальной модели по умолчанию
-    return 'gemini-3.8-flash';
+
+    pool.sort((a, b) {
+      if (a.contains('3.8-flash')) return -1;
+      if (b.contains('3.8-flash')) return 1;
+      if (a.contains('3.8')) return -1;
+      if (b.contains('3.8')) return 1;
+      return 0;
+    });
+
+    if (!pool.contains('gemini-3.8-flash')) pool.insert(0, 'gemini-3.8-flash');
+    return pool;
   }
 
   Future<void> _runAutoAnalysis() async {
     if (_savedApiKey.isEmpty) {
-      setState(() => _aiResponse = "Сначала введите и сохраните Gemini API ключ!");
+      setState(() => _statusMessage = "Сначала сохраните Gemini API ключ!");
       return;
     }
 
     setState(() {
       _isAnalyzing = true;
-      _aiResponse = "1. Подключение к Gemini 3.8 Flash...";
+      _statusMessage = "Загрузка страницы forza.net/fh6playlists...";
     });
 
     try {
-      final activeModel = await _findActiveModel(_savedApiKey);
-
-      if (!mounted) return;
-      setState(() => _aiResponse = "2. Загрузка данных с forza.net/fh6playlists...\n(Модель: $activeModel)");
-
       final siteUrl = Uri.parse('https://forza.net/fh6playlists');
       final siteRes = await http.get(siteUrl).timeout(const Duration(seconds: 20));
       
       if (!mounted) return;
       if (siteRes.statusCode != 200) throw Exception("Сайт недоступен (Код ${siteRes.statusCode})");
 
-      setState(() => _aiResponse = "3. Генерация ответа через $activeModel...");
-      
       String cleanText = siteRes.body.replaceAll(RegExp(r'<[^>]*>'), ' ').replaceAll(RegExp(r'\s+'), ' ');
 
+      setState(() => _statusMessage = "Поиск активной модели Gemini...");
+      final models = await _getAvailableModelPool(_savedApiKey);
+
+      // Строгий промпт для получения чистого JSON
       final prompt = '''
       Ты — эксперт по экономике Forza Horizon. Сегодня: ${DateTime.now()}.
-      Ниже приведен текст с сайта forza.net/fh6playlists.
-      1. Найди машины за 20 PTS и 40 PTS для каждого сезона.
-      2. Определи, какой сезон идет прямо сейчас.
-      3. Напиши краткий инвестиционный совет для текущих машин (за сколько снайпить, когда продавать).
-      Выведи красиво, с эмодзи.
-      Текст: $cleanText
+      Проанализируй текст с сайта forza.net/fh6playlists и верни ответ СТРОГО в формате JSON без markdown блоков, кавычек ```json или дополнительного текста.
+
+      Структура JSON:
+      {
+        "current_season": "Название текущего сезона (например, Лето / Summer)",
+        "series_number": "Номер серии (например, Серия 39)",
+        "cars_20pts": [
+          {"name": "Название машины", "season": "Лето", "est_value": "20,000,000 CR"}
+        ],
+        "cars_40pts": [
+          {"name": "Название машины", "season": "Лето", "est_value": "15,000,000 CR"}
+        ],
+        "trading_advice": "Подробный совет: какие машины снайпить прямо сейчас, когда фиксировать профит и какие держать в HOLD."
+      }
+
+      Текст сайта:
+      $cleanText
       ''';
 
-      final apiUrl = Uri.parse("https://generativelanguage.googleapis.com/v1beta/models/$activeModel:generateContent?key=$_savedApiKey");
-      final aiRes = await http.post(
-        apiUrl,
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "contents": [
-            {
-              "parts": [
-                {"text": prompt}
+      String? successfulText;
+      String lastError = "";
+
+      for (final modelName in models.take(3)) {
+        for (int attempt = 1; attempt <= 2; attempt++) {
+          if (!mounted) return;
+          setState(() => _statusMessage = "Анализ через $modelName (попытка $attempt)...");
+
+          final apiUrl = Uri.parse("[https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$_savedApiKey](https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$_savedApiKey)");
+          final aiRes = await http.post(
+            apiUrl,
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode({
+              "contents": [
+                {
+                  "parts": [
+                    {"text": prompt}
+                  ]
+                }
               ]
-            }
-          ]
-        }),
-      ).timeout(const Duration(seconds: 35));
+            }),
+          ).timeout(const Duration(seconds: 35));
+
+          if (aiRes.statusCode == 200) {
+            final jsonResult = jsonDecode(aiRes.body);
+            successfulText = jsonResult['candidates']?[0]?['content']?['parts']?[0]?['text'];
+            break;
+          } else if (aiRes.statusCode == 503) {
+            lastError = "Сервер временно перегружен (503). Повтор...";
+            await Future.delayed(const Duration(seconds: 2));
+          } else {
+            lastError = "Ошибка HTTP ${aiRes.statusCode}:${aiRes.body}";
+            break;
+          }
+        }
+        if (successfulText != null) break;
+      }
 
       if (!mounted) return;
 
-      if (aiRes.statusCode == 200) {
-        final jsonResult = jsonDecode(aiRes.body);
-        final answer = jsonResult['candidates']?[0]?['content']?['parts']?[0]?['text'];
-        setState(() => _aiResponse = answer ?? "Ответ получен пустой.");
+      if (successfulText != null) {
+        // Очищаем от возможных markdown-оберток ```json ... ```
+        String raw = successfulText.trim();
+        if (raw.startsWith("```json")) raw = raw.substring(7);
+        if (raw.startsWith("```")) raw = raw.substring(3);
+        if (raw.endsWith("```")) raw = raw.substring(0, raw.length - 3);
+        raw = raw.trim();
+
+        try {
+          final Map<String, dynamic> parsed = jsonDecode(raw);
+          await _saveAnalysisResult(structured: parsed, raw: raw);
+        } catch (_) {
+          // Если модель ответила простым текстом
+          await _saveAnalysisResult(raw: successfulText);
+        }
       } else {
-        setState(() => _aiResponse = "Ошибка API (HTTP ${aiRes.statusCode}):\n${aiRes.body}");
+        setState(() => _statusMessage = "$lastError\nПопробуйте снова через несколько секунд.");
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() => _aiResponse = "Ошибка: $e");
+      setState(() => _statusMessage = "Ошибка: $e");
     } finally {
       if (mounted) {
         setState(() => _isAnalyzing = false);
@@ -290,12 +366,26 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
-      appBar: AppBar(title: const Text("ИИ-Аналитик", style: TextStyle(fontSize: 17)), backgroundColor: const Color(0xFF1E1E1E), elevation: 0),
+      appBar: AppBar(
+        title: const Text("ИИ-Аналитик", style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF1E1E1E),
+        elevation: 0,
+        actions: [
+          if (_lastUpdatedTime.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: Center(
+                child: Text("Обновлено: $_lastUpdatedTime", style: const TextStyle(color: Colors.white54, fontSize: 11)),
+              ),
+            )
+        ],
+      ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(14.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Поле ввода API ключа
             Row(
               children: [
                 Expanded(
@@ -304,7 +394,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
                     obscureText: true,
                     style: const TextStyle(color: Colors.white, fontSize: 13),
                     decoration: InputDecoration(
-                      hintText: "Вставьте Gemini API ключ (AIzaSy...)",
+                      hintText: "Gemini API ключ (AIzaSy...)",
                       hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
                       filled: true,
                       fillColor: const Color(0xFF1E1E1E),
@@ -325,25 +415,142 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             ElevatedButton.icon(
               icon: _isAnalyzing 
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                  : const Icon(Icons.auto_awesome, color: Colors.black),
-              label: Text(_isAnalyzing ? "Gemini думает..." : "Спросить ИИ о сезонах", style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                  : const Icon(Icons.auto_awesome, color: Colors.black, size: 20),
+              label: Text(_isAnalyzing ? "Анализирую данные..." : "Спросить ИИ о сезонах", style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14)),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
               onPressed: _isAnalyzing ? null : _runAutoAnalysis,
             ),
-            const SizedBox(height: 16),
+            if (_statusMessage.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(_statusMessage, style: const TextStyle(color: Colors.amberAccent, fontSize: 12), textAlign: TextAlign.center),
+            ],
+            const SizedBox(height: 12),
             Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white12)),
-                child: SingleChildScrollView(child: Text(_aiResponse, style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.5))),
-              ),
+              child: _structuredData != null
+                  ? _buildStructuredView(_structuredData!)
+                  : (_rawAnalysisFallback != null
+                      ? _buildFallbackView(_rawAnalysisFallback!)
+                      : Center(child: Text(_statusMessage.isEmpty ? "Нет сохраненных данных" : _statusMessage, style: const TextStyle(color: Colors.white38)))),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildStructuredView(Map<String, dynamic> data) {
+    final season = data['current_season'] ?? "Сезон не определен";
+    final series = data['series_number'] ?? "";
+    final advice = data['trading_advice'] ?? "";
+    final List cars20 = data['cars_20pts'] ?? [];
+    final List cars40 = data['cars_40pts'] ?? [];
+
+    return ListView(
+      physics: const BouncingScrollPhysics(),
+      children: [
+        // Заголовок текущего сезона
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: [Colors.green.shade900.withOpacity(0.5), const Color(0xFF1E1E1E)]),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.greenAccent.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.calendar_today, color: Colors.greenAccent, size: 28),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(season.toString().toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                    if (series.isNotEmpty)
+                      Text(series, style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
+                  ],
+                ),
+              ),
+              const Chip(
+                label: Text("LIVE", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
+                backgroundColor: Colors.greenAccent,
+                padding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+              )
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // Награды 20 PTS
+        if (cars20.isNotEmpty) ...[
+          const Text("🏆 НАГРАДЫ 20 PTS (ОСНОВНЫЕ)", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+          const SizedBox(height: 6),
+          ...cars20.map((c) => _buildCarCard(c, Colors.amberAccent)),
+          const SizedBox(height: 12),
+        ],
+
+        // Награды 40 PTS
+        if (cars40.isNotEmpty) ...[
+          const Text("⭐ НАГРАДЫ 40 PTS (ВТОРОСТЕПЕННЫЕ)", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+          const SizedBox(height: 6),
+          ...cars40.map((c) => _buildCarCard(c, Colors.cyanAccent)),
+          const SizedBox(height: 12),
+        ],
+
+        // Совет советника
+        if (advice.isNotEmpty) ...[
+          const Text("💡 ИНВЕСТИЦИОННЫЙ СОВЕТ", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: Text(
+              advice,
+              style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.45),
+            ),
+          ),
+        ],
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  Widget _buildCarCard(dynamic carMap, Color accentColor) {
+    final name = carMap['name'] ?? "Автомобиль";
+    final val = carMap['est_value'] ?? "";
+    final carSeason = carMap['season'] ?? "";
+
+    return Card(
+      color: const Color(0xFF1E1E1E),
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: const BorderSide(color: Colors.white10)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+        leading: Icon(Icons.directions_car, color: accentColor),
+        title: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+        subtitle: carSeason.isNotEmpty ? Text(carSeason, style: const TextStyle(color: Colors.white38, fontSize: 11)) : null,
+        trailing: val.isNotEmpty
+            ? Text(val, style: TextStyle(color: accentColor, fontWeight: FontWeight.bold, fontSize: 12))
+            : null,
+      ),
+    );
+  }
+
+  Widget _buildFallbackView(String text) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white12)),
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Text(text, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.45)),
       ),
     );
   }
