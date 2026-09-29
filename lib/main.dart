@@ -139,7 +139,7 @@ class _Forza6SniperAppState extends State<Forza6SniperApp> {
 }
 
 // =======================================================
-// 1. АВТОМАТИЧЕСКИЙ СЕЗОННЫЙ СОВЕТНИК
+// 1. АВТОМАТИЧЕСКИЙ СЕЗОННЫЙ СОВЕТНИК (Восстановлен)
 // =======================================================
 class StrategyAdvisorTab extends StatefulWidget {
   const StrategyAdvisorTab({super.key});
@@ -181,8 +181,16 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
     nextThursday = DateTime.utc(nextThursday.year, nextThursday.month, nextThursday.day, 14, 30);
     Duration diff = nextThursday.difference(now);
     if (diff.isNegative) diff = const Duration(seconds: 0);
+
+    int days = diff.inDays;
+    int hours = diff.inHours % 24;
+    int minutes = diff.inMinutes % 60;
+    int seconds = diff.inSeconds % 60;
+
     if (mounted) {
-      setState(() => _timeRemaining = "${diff.inDays}д ${diff.inHours % 24}ч ${diff.inMinutes % 60}м ${diff.inSeconds % 60}с до смены сезона");
+      setState(() {
+        _timeRemaining = "${days}д ${hours}ч ${minutes}м ${seconds}с до смены сезона";
+      });
     }
   }
 
@@ -191,23 +199,286 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
     try {
       final res = await http.get(Uri.parse(PLAYLIST_FEED_URL)).timeout(const Duration(seconds: 10));
       if (!mounted) return;
+
       if (res.statusCode == 200) {
-        setState(() { _playlistData = jsonDecode(utf8.decode(res.bodyBytes)); _isLoading = false; });
+        final decoded = jsonDecode(utf8.decode(res.bodyBytes));
+        setState(() {
+          _playlistData = decoded;
+          _isLoading = false;
+        });
       } else {
-        setState(() { _errorMsg = "Сервер недоступен (Код: ${res.statusCode})"; _isLoading = false; });
+        setState(() {
+          _errorMsg = "Сервер недоступен (Код: ${res.statusCode})";
+          _isLoading = false;
+        });
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() { _errorMsg = "Ошибка сети: проверьте подключение"; _isLoading = false; });
+      setState(() {
+        _errorMsg = "Ошибка сети: проверьте подключение";
+        _isLoading = false;
+      });
     }
+  }
+
+  void _showCarDetails(BuildContext context, String carName, String estValue, String season) {
+    const String imageUrl = "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=800&q=80";
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.greenAccent, width: 1),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: ShaderMask(
+                    shaderCallback: (rect) {
+                      return LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.black.withOpacity(0.3), Colors.black.withOpacity(0.95)],
+                      ).createShader(rect);
+                    },
+                    blendMode: BlendMode.darken,
+                    child: Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Container(color: const Color(0xFF1E1E1E)),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.directions_car, color: Colors.greenAccent),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(carName, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                      const Divider(color: Colors.white24, height: 20),
+                      _buildSpecRow("Сезон награды:", season),
+                      _buildSpecRow("Рыночный потолок:", estValue),
+                      _buildSpecRow("Рекомендуемый класс:", "S1 900 / S2 998"),
+                      _buildSpecRow("Тип привода:", "Полный (AWD) / Задний"),
+                      _buildSpecRow("Ликвидность:", "🔥 Дефицит (Топ)"),
+                      const SizedBox(height: 12),
+                      const Text(
+                        "💡 Совет по снайпингу: Модель пользуется повышенным спросом в текущей серии. Скупайте лоты со скидкой и выставляйте по максимальной цене.",
+                        style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+                      ),
+                      const SizedBox(height: 16),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text("ЗАКРЫТЬ", style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSpecRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
-      appBar: AppBar(title: const Text("Forza6Sniper | Аналитика рынка", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), backgroundColor: const Color(0xFF1E1E1E), elevation: 0, actions: [IconButton(icon: const Icon(Icons.refresh, color: Colors.greenAccent), onPressed: _isLoading ? null : _fetchPlaylistData)]),
-      body: _isLoading ? const Center(child: CircularProgressIndicator(color: Colors.greenAccent)) : _errorMsg.isNotEmpty ? Center(child: Text(_errorMsg, style: const TextStyle(color: Colors.redAccent))) : ListView(padding: const EdgeInsets.all(14), children: [Text("СЕЗОН: ${_playlistData?['current_season']?.toString().toUpperCase() ?? 'WINTER'}", style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 10), Text(_timeRemaining, style: const TextStyle(color: Colors.amberAccent, fontSize: 14)), const Divider(color: Colors.white24, height: 30), Text("Сводка рынка: ${_playlistData?['trading_advice'] ?? 'Данные отсутствуют'}", style: const TextStyle(color: Colors.white70, fontSize: 14))]),
+      appBar: AppBar(
+        title: const Text("Forza6Sniper | Сезон & Советы", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF1E1E1E),
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.greenAccent),
+            onPressed: _isLoading ? null : _fetchPlaylistData,
+          )
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: Colors.greenAccent))
+          : _errorMsg.isNotEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(_errorMsg, style: const TextStyle(color: Colors.redAccent)),
+                      const SizedBox(height: 12),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent),
+                        onPressed: _fetchPlaylistData,
+                        child: const Text("Повторить", style: TextStyle(color: Colors.black)),
+                      )
+                    ],
+                  ),
+                )
+              : _buildStructuredView(_playlistData!),
+    );
+  }
+
+  Widget _buildStructuredView(Map<String, dynamic> data) {
+    final season = data['current_season']?.toString() ?? "WINTER";
+    final series = data['series_number']?.toString() ?? "Series";
+    final seriesRewards = data['series_rewards']?.toString() ?? "";
+    final advice = data['trading_advice']?.toString() ?? "";
+    final List cars20 = (data['cars_20pts'] is List) ? data['cars_20pts'] : [];
+    final List cars40 = (data['cars_40pts'] is List) ? data['cars_40pts'] : [];
+
+    return ListView(
+      padding: const EdgeInsets.all(14),
+      physics: const BouncingScrollPhysics(),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: [Colors.green.shade900.withOpacity(0.5), const Color(0xFF1E1E1E)]),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.greenAccent.withOpacity(0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.calendar_today, color: Colors.greenAccent, size: 26),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(season.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text(series, style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  const Chip(
+                    label: Text("SYNCED", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
+                    backgroundColor: Colors.greenAccent,
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  )
+                ],
+              ),
+              const Divider(color: Colors.white24, height: 20),
+              Row(
+                children: [
+                  const Icon(Icons.timer, color: Colors.amberAccent, size: 16),
+                  const SizedBox(width: 8),
+                  Text(_timeRemaining, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500)),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        if (seriesRewards.isNotEmpty) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.amberAccent.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.stars, color: Colors.amberAccent, size: 20),
+                const SizedBox(width: 10),
+                Expanded(child: Text(seriesRewards, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500))),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
+
+        if (cars20.isNotEmpty) ...[
+          const Text("🏆 НАГРАДЫ 20 PTS", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          ...cars20.map((c) => _buildCarCard(context, c, Colors.amberAccent, season)),
+          const SizedBox(height: 12),
+        ],
+
+        if (cars40.isNotEmpty) ...[
+          const Text("⭐ НАГРАДЫ 40 PTS", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          ...cars40.map((c) => _buildCarCard(context, c, Colors.cyanAccent, season)),
+          const SizedBox(height: 12),
+        ],
+
+        if (advice.isNotEmpty) ...[
+          const Text("💡 СТРАТЕГИЯ СНАЙПИНГА", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white12)),
+            child: Text(advice, style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.45)),
+          ),
+        ],
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  Widget _buildCarCard(BuildContext context, dynamic carData, Color accentColor, String activeSeason) {
+    String name = "Автомобиль";
+    String val = "";
+    if (carData is Map) {
+      name = carData['name']?.toString() ?? "Автомобиль";
+      val = carData['est_value']?.toString() ?? "";
+    }
+
+    return Card(
+      color: const Color(0xFF1E1E1E),
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: const BorderSide(color: Colors.white10)),
+      child: ListTile(
+        onTap: () => _showCarDetails(context, name, val, activeSeason),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+        leading: Icon(Icons.directions_car, color: accentColor),
+        title: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+        subtitle: const Text("Тапните для просмотра характеристик", style: TextStyle(color: Colors.white38, fontSize: 10)),
+        trailing: val.isNotEmpty ? Text(val, style: TextStyle(color: accentColor, fontWeight: FontWeight.bold, fontSize: 12)) : null,
+      ),
     );
   }
 }
@@ -387,7 +658,9 @@ class _ScannerTabState extends State<ScannerTab> {
                 const Text("Укажите текущую среднюю стоимость лота на рынке:", style: TextStyle(color: Colors.white70, fontSize: 12)),
                 const SizedBox(height: 10),
                 TextField(
-                  controller: valController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number,
+                  controller: valController,
+                  style: const TextStyle(color: Colors.white),
+                  keyboardType: TextInputType.number,
                   decoration: const InputDecoration(labelText: "Текущая рыночная цена (CR)", labelStyle: TextStyle(color: Colors.white54)),
                 ),
                 const SizedBox(height: 20),
@@ -561,7 +834,6 @@ class WatchlistTab extends StatefulWidget {
 
 class _WatchlistTabState extends State<WatchlistTab> {
   
-  // База самых популярных машин для автодополнения (чтобы сразу было удобно)
   final List<String> _popularCars = [
     "2016 BENTLEY BENTAYGA", "ASTON MARTIN", "AUDI RS6", "BMW M3", "BMW M4", 
     "BUGATTI DIVO", "CHEVROLET CORVETTE", "FERRARI 599XX", "FERRARI F40", 
@@ -570,11 +842,9 @@ class _WatchlistTabState extends State<WatchlistTab> {
     "PORSCHE 911 GT3", "PORSCHE TAYCAN", "TOYOTA SUPRA"
   ];
 
-  // Сборщик подсказок (База + Ваша история из гаража)
   List<String> _getSuggestions(String query) {
     Set<String> allCars = widget.portfolio.map((e) => e.name.toUpperCase()).toSet();
     allCars.addAll(_popularCars);
-    
     if (query.isEmpty) return const [];
     return allCars.where((car) => car.contains(query.toUpperCase())).toList()..sort();
   }
@@ -594,7 +864,6 @@ class _WatchlistTabState extends State<WatchlistTab> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Поле с АВТОДОПОЛНЕНИЕМ
               Autocomplete<String>(
                 optionsBuilder: (TextEditingValue textEditingValue) {
                   return _getSuggestions(textEditingValue.text);
@@ -613,7 +882,6 @@ class _WatchlistTabState extends State<WatchlistTab> {
                     ),
                   );
                 },
-                // Темный дизайн для выпадающего списка
                 optionsViewBuilder: (context, onSelected, options) {
                   return Align(
                     alignment: Alignment.topLeft,
@@ -828,7 +1096,6 @@ class _WatchlistTabState extends State<WatchlistTab> {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(title: const Text("Forza6Sniper | Радар активов"), backgroundColor: const Color(0xFF1E1E1E)),
-      // КНОПКА РУЧНОГО ДОБАВЛЕНИЯ
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.greenAccent,
         onPressed: _showManualAddDialog,
