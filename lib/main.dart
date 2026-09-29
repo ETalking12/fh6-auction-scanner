@@ -134,7 +134,7 @@ class _Forza6SniperAppState extends State<Forza6SniperApp> {
 }
 
 // =======================================================
-// 1. АВТОМАТИЧЕСКИЙ СЕЗОННЫЙ СОВЕТНИК + ТАЙМЕР + ХАРАКТЕРИСТИКИ
+// 1. АВТОМАТИЧЕСКИЙ СЕЗОННЫЙ СОВЕТНИК + ТАЙМЕР + ДЕТАЛИ С ФОТО
 // =======================================================
 class StrategyAdvisorTab extends StatefulWidget {
   const StrategyAdvisorTab({super.key});
@@ -225,44 +225,82 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
     }
   }
 
-  // Метод для показа модального окна с характеристиками машины
+  // Модальное окно с фоновым фото и скомпонованными строками
   void _showCarDetails(BuildContext context, String carName, String estValue, String season) {
+    const String imageUrl = "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=800&q=80";
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: const BorderSide(color: Colors.greenAccent, width: 1)),
-        title: Row(
-          children: [
-            const Icon(Icons.directions_car, color: Colors.greenAccent),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(carName, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSpecRow("Сезон награды:", season),
-            _buildSpecRow("Рыночный потолок:", estValue),
-            _buildSpecRow("Рекомендуемый класс:", "S1 900 / S2 998"),
-            _buildSpecRow("Тип привода:", "Полный (AWD) / Задний"),
-            _buildSpecRow("Ликвидность на торгах:", "🔥🔥🔥 Высокая (Дефицит)"),
-            const SizedBox(height: 12),
-            const Text(
-              "💡 Совет по снайпингу: Модель пользуется повышенным спросом в текущей серии «Британский Автопром». Скупайте лоты со скидкой от 20% и выставляйте по максимальной цене.",
-              style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("ЗАКРЫТЬ", style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.greenAccent, width: 1),
           ),
-        ],
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: ShaderMask(
+                    shaderCallback: (rect) {
+                      return LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.black.withOpacity(0.3), Colors.black.withOpacity(0.95)],
+                      ).createShader(rect);
+                    },
+                    blendMode: BlendMode.darken,
+                    child: Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Container(color: const Color(0xFF1E1E1E)),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.directions_car, color: Colors.greenAccent),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(carName, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                      const Divider(color: Colors.white24, height: 20),
+                      _buildSpecRow("Сезон награды:", season),
+                      _buildSpecRow("Рыночный потолок:", estValue),
+                      _buildSpecRow("Рекомендуемый класс:", "S1 900 / S2 998"),
+                      _buildSpecRow("Тип привода:", "Полный (AWD) / Задний"),
+                      _buildSpecRow("Ликвидность:", "🔥 Дефицит (Топ)"),
+                      const SizedBox(height: 12),
+                      const Text(
+                        "💡 Совет по снайпингу: Модель пользуется повышенным спросом в текущей серии «Британский Автопром». Скупайте лоты со скидкой от 20% и выставляйте по максимальной цене.",
+                        style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+                      ),
+                      const SizedBox(height: 16),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text("ЗАКРЫТЬ", style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -274,7 +312,14 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+            ),
+          ),
         ],
       ),
     );
