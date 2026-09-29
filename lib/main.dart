@@ -6,7 +6,6 @@ import 'package:camera/camera.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tesseract_ocr/flutter_tesseract_ocr.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
 
 List<CameraDescription> cameras = [];
 
@@ -135,7 +134,7 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
 }
 
 // ==========================================
-// 1. ИИ-АНАЛИТИК САЙТА (Gemini с автоподбором модели)
+// 1. ИИ-АНАЛИТИК САЙТА (Прямой REST API к Gemini)
 // ==========================================
 class SmartAdvisorTab extends StatefulWidget {
   const SmartAdvisorTab({super.key});
@@ -150,32 +149,26 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   bool _isAnalyzing = false;
   String _aiResponse = "Нажмите кнопку, чтобы Gemini прочитал сайт forza.net/fh6playlists и выдал советы...";
 
-  Future<String?> _detectWorkingModel() async {
-    try {
-      final res = await http.get(
-        Uri.parse("https://generativelanguage.googleapis.com/v1beta/models?key=$_apiKey"),
-      ).timeout(const Duration(seconds: 10));
-
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final List models = data['models'] ?? [];
-        
-        // Ищем модели, поддерживающие генерацию текста
-        for (var m in models) {
-          final String name = m['name'] ?? '';
-          final List methods = m['supportedGenerationMethods'] ?? [];
-          if (methods.contains('generateContent')) {
-            // Убираем префикс "models/" для SDK
-            return name.replaceFirst('models/', '');
-          }
+  Future<String> _findActiveModel() async {
+    // 1. Опрашиваем список поддерживаемых аккаунтом моделей
+    final url = Uri.parse("https://generativelanguage.googleapis.com/v1beta/models?key=$_apiKey");
+    final res = await http.get(url).timeout(const Duration(seconds: 10));
+    
+    if (res.statusCode == 200) {
+      final data = jsonDecode(res.body);
+      final List models = data['models'] ?? [];
+      for (var m in models) {
+        final String name = m['name'] ?? '';
+        final List methods = m['supportedGenerationMethods'] ?? [];
+        if (methods.contains('generateContent')) {
+          return name.replaceFirst('models/', '');
         }
-      } else {
-        debugPrint("ListModels статус: ${res.statusCode}, тело: ${res.body}");
       }
-    } catch (e) {
-      debugPrint("Не удалось получить список моделей: $e");
+    } else {
+      throw Exception("Ошибка аккаунта/ключа (HTTP ${res.statusCode}):\n${res.body}");
     }
-    return null;
+    // Резервная актуальная модель по умолчанию
+    return 'gemini-2.0-flash';
   }
 
   Future<void> _runAutoAnalysis() async {
@@ -185,22 +178,21 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     });
 
     try {
-      // Автоматически определяем рабочую модель под ваш API-ключ
-      String selectedModel = await _detectWorkingModel() ?? 'gemini-1.5-flash';
+      final activeModel = await _findActiveModel();
 
-      setState(() => _aiResponse = "2. Загрузка данных с forza.net/fh6playlists...\n(Модель: $selectedModel)");
+      if (!mounted) return;
+      setState(() => _aiResponse = "2. Загрузка forza.net/fh6playlists...\n(Модель: $activeModel)");
 
-      final url = Uri.parse('https://forza.net/fh6playlists');
-      final response = await http.get(url).timeout(const Duration(seconds: 20));
+      final siteUrl = Uri.parse('https://forza.net/fh6playlists');
+      final siteRes = await http.get(siteUrl).timeout(const Duration(seconds: 20));
       
       if (!mounted) return;
-      if (response.statusCode != 200) throw Exception("Сайт недоступен (Код ${response.statusCode})");
+      if (siteRes.statusCode != 200) throw Exception("Сайт недоступен (Код ${siteRes.statusCode})");
 
-      setState(() => _aiResponse = "3. Анализ сайта через $selectedModel...");
+      setState(() => _aiResponse = "3. Генерация ответа через $activeModel...");
       
-      String cleanText = response.body.replaceAll(RegExp(r'<[^>]*>'), ' ').replaceAll(RegExp(r'\s+'), ' ');
+      String cleanText = siteRes.body.replaceAll(RegExp(r'<[^>]*>'), ' ').replaceAll(RegExp(r'\s+'), ' ');
 
-      final model = GenerativeModel(model: selectedModel, apiKey: _apiKey);
       final prompt = '''
       Ты — эксперт по экономике Forza Horizon. Сегодня: ${DateTime.now()}.
       Ниже приведен текст с сайта forza.net/fh6playlists.
@@ -211,10 +203,31 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       Текст: $cleanText
       ''';
 
-      final aiResult = await model.generateContent([Content.text(prompt)]);
-      
+      // Прямой REST-запрос к API Google без посредников SDK
+      final apiUrl = Uri.parse("https://generativelanguage.googleapis.com/v1beta/models/$activeModel:generateContent?key=$_apiKey");
+      final aiRes = await http.post(
+        apiUrl,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "contents": [
+            {
+              "parts": [
+                {"text": prompt}
+              ]
+            }
+          ]
+        }),
+      ).timeout(const Duration(seconds: 30));
+
       if (!mounted) return;
-      setState(() => _aiResponse = aiResult.text ?? "Ошибка генерации ответа.");
+
+      if (aiRes.statusCode == 200) {
+        final jsonResult = jsonDecode(aiRes.body);
+        final answer = jsonResult['candidates']?[0]?['content']?['parts']?[0]?['text'];
+        setState(() => _aiResponse = answer ?? "Ответ получен пустой.");
+      } else {
+        setState(() => _aiResponse = "Ошибка API (HTTP ${aiRes.statusCode}):\n${aiRes.body}");
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _aiResponse = "Ошибка: $e");
