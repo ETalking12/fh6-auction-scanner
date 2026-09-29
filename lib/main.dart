@@ -235,18 +235,22 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
           String name = (m['name'] ?? '').toString().trim();
           name = name.replaceFirst('models/', '');
           final List methods = m['supportedGenerationMethods'] ?? [];
-          if (methods.contains('generateContent') && name.isNotEmpty) {
+          
+          // Отсеиваем специализированные модели вроде -tts, -vision, embedding
+          final isTtsOrAudio = name.contains('-tts') || name.contains('audio') || name.contains('embedding');
+          if (methods.contains('generateContent') && name.isNotEmpty && !isTtsOrAudio) {
             pool.add(name);
           }
         }
       }
     } catch (_) {}
 
+    // Приоритет чистой gemini-3.8-flash
     pool.sort((a, b) {
+      if (a == 'gemini-3.8-flash') return -1;
+      if (b == 'gemini-3.8-flash') return 1;
       if (a.contains('3.8-flash')) return -1;
       if (b.contains('3.8-flash')) return 1;
-      if (a.contains('3.8')) return -1;
-      if (b.contains('3.8')) return 1;
       return 0;
     });
 
@@ -254,6 +258,21 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       pool.insert(0, 'gemini-3.8-flash');
     }
     return pool;
+  }
+
+  String _cleanHtmlContent(String html) {
+    // Удаляем скрипты и стили
+    String text = html.replaceAll(RegExp(r'<script[\s\S]*?</script>', caseSensitive: false), ' ');
+    text = text.replaceAll(RegExp(r'<style[\s\S]*?</style>', caseSensitive: false), ' ');
+    // Удаляем все HTML теги
+    text = text.replaceAll(RegExp(r'<[^>]*>'), ' ');
+    // Схлопываем лишние пробелы и переносы
+    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    // Ограничиваем длину 4000 символами, чтобы не превысить токены
+    if (text.length > 4000) {
+      text = text.substring(0, 4000);
+    }
+    return text;
   }
 
   Future<void> _runAutoAnalysis() async {
@@ -275,31 +294,31 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       if (!mounted) return;
       if (siteRes.statusCode != 200) throw Exception("Сайт недоступен (Код ${siteRes.statusCode})");
 
-      String cleanText = siteRes.body.replaceAll(RegExp(r'<[^>]*>'), ' ').replaceAll(RegExp(r'\s+'), ' ');
+      final cleanText = _cleanHtmlContent(siteRes.body);
 
       setState(() => _statusMessage = "Поиск активной модели Gemini...");
       final models = await _getAvailableModelPool(cleanKey);
 
       final prompt = '''
-      Ты — эксперт по экономике Forza Horizon. Сегодня: ${DateTime.now()}.
-      Проанализируй текст с сайта forza.net/fh6playlists и верни ответ СТРОГО в формате JSON без markdown блоков, кавычек ```json или дополнительного текста.
+Ты — эксперт по экономике Forza Horizon.
+Ниже выжимка текста с forza.net/fh6playlists.
+Верни ответ СТРОГО в формате JSON без кавычек ```json или markdown.
 
-      Структура JSON:
-      {
-        "current_season": "Название текущего сезона",
-        "series_number": "Номер серии",
-        "cars_20pts": [
-          {"name": "Название машины", "season": "Сезон", "est_value": "Оценка стоимости"}
-        ],
-        "cars_40pts": [
-          {"name": "Название машины", "season": "Сезон", "est_value": "Оценка стоимости"}
-        ],
-        "trading_advice": "Рекомендации по снайпингу и перепродаже."
-      }
+{
+  "current_season": "Название текущего сезона",
+  "series_number": "Номер серии",
+  "cars_20pts": [
+    {"name": "Название авто", "season": "Сезон", "est_value": "Оценка CR"}
+  ],
+  "cars_40pts": [
+    {"name": "Название авто", "season": "Сезон", "est_value": "Оценка CR"}
+  ],
+  "trading_advice": "Совет: кого снайпить, держать или продавать."
+}
 
-      Текст сайта:
-      $cleanText
-      ''';
+Текст:
+$cleanText
+''';
 
       String? successfulText;
       String lastError = "";
@@ -308,7 +327,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
         final modelName = rawModel.trim();
         for (int attempt = 1; attempt <= 2; attempt++) {
           if (!mounted) return;
-          setState(() => _statusMessage = "Анализ через $modelName (попытка $attempt)...");
+          setState(() => _statusMessage = "Анализ через $modelName...");
 
           final apiUrl = Uri.https(
             'generativelanguage.googleapis.com',
@@ -334,8 +353,11 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
             final jsonResult = jsonDecode(aiRes.body);
             successfulText = jsonResult['candidates']?[0]?['content']?['parts']?[0]?['text'];
             break;
+          } else if (aiRes.statusCode == 429) {
+            lastError = "Лимит запросов исчерпан (429). Подождите 15 секунд.";
+            await Future.delayed(const Duration(seconds: 3));
           } else if (aiRes.statusCode == 503) {
-            lastError = "Сервер временно перегружен (503). Повтор...";
+            lastError = "Сервер перегружен (503). Повтор...";
             await Future.delayed(const Duration(seconds: 2));
           } else {
             lastError = "Ошибка HTTP ${aiRes.statusCode}:${aiRes.body}";
@@ -361,7 +383,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
           await _saveAnalysisResult(raw: successfulText);
         }
       } else {
-        setState(() => _statusMessage = "$lastError\nПопробуйте снова через несколько секунд.");
+        setState(() => _statusMessage = lastError);
       }
     } catch (e) {
       if (!mounted) return;
