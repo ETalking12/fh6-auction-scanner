@@ -26,7 +26,7 @@ jobs:
           cache: false
 
       - name: Create fresh Android platform safely
-        run: flutter create . --org com.fh6.scanner --project-name fh6_auction_scanner --platforms android --overwrite
+        run: flutter create . --org com.fh6.scanner --project-name fh6_auction_scanner --platforms android
 
       - name: Install dependencies
         run: flutter pub get
