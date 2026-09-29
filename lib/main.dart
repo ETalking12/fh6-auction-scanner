@@ -151,7 +151,7 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
 }
 
 // =======================================================
-// 1. ИИ-АНАЛИТИК С АВТОНОМНЫМ ТРИГГЕРОМ ЧЕТВЕРГА
+// 1. ИИ-АНАЛИТИК (Gemini / Groq / OpenRouter)
 // =======================================================
 class SmartAdvisorTab extends StatefulWidget {
   const SmartAdvisorTab({super.key});
@@ -185,7 +185,6 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     super.dispose();
   }
 
-  // Расчет индекса текущей недели четверга (каждый четверг 14:30 UTC = epoch + 1)
   int _getCurrentThursdayEpoch() {
     final anchor = DateTime.utc(2026, 9, 10, 14, 30);
     final now = DateTime.now().toUtc();
@@ -253,10 +252,9 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       }
     });
 
-    // Автопроверка наступления четверга
     final currentEpoch = _getCurrentThursdayEpoch();
     if (_getCurrentKey().isNotEmpty && currentEpoch > lastSyncedEpoch) {
-      debugPrint("Сработал триггер четверга: наступил Epoch $currentEpoch. Автообновление...");
+      debugPrint("Сработал триггер четверга: Epoch $currentEpoch. Автообновление...");
       await _runAutoAnalysis(isWeeklyAutoSync: true);
     }
   }
@@ -339,7 +337,6 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   }
 
   Future<String> _fetchLiveExternalSource() async {
-    // 1. Официальная живая страница
     try {
       final siteUri = Uri.https('forza.net', '/fh6playlists');
       final siteRes = await http.get(siteUri).timeout(const Duration(seconds: 10));
@@ -352,16 +349,15 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
             .trim();
         if (text.length > 3500) text = text.substring(0, 3500);
         if (text.toLowerCase().contains("series") || text.toLowerCase().contains("points")) {
-          return "Живые данные сайта forza.net:\n$text";
+          return "Данные forza.net:\n$text";
         }
       }
     } catch (_) {}
 
-    // 2. Резервный облачный JSON
     try {
       final feedRes = await http.get(Uri.parse(PLAYLIST_FEED_URL)).timeout(const Duration(seconds: 10));
       if (feedRes.statusCode == 200) {
-        return "Онлайн манифест GitHub:\n${feedRes.body}";
+        return "Манифест плейлиста:\n${feedRes.body}";
       }
     } catch (_) {}
 
@@ -390,7 +386,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
 
     setState(() {
       _isAnalyzing = true;
-      _statusMessage = isWeeklyAutoSync 
+      _statusMessage = isWeeklyAutoSync
           ? "Четверг: плановая автоактуализация сезона..."
           : "Загрузка данных из внешних источников...";
     });
@@ -432,7 +428,7 @@ $externalContent
       if (_selectedProvider == "gemini") {
         for (int attempt = 1; attempt <= 3; attempt++) {
           if (!mounted) return;
-          setState(() => _statusMessage = "Синхронизация через Gemini (попытка $attempt)...");
+          setState(() => _statusMessage = "Запрос к Gemini 3.8 Flash (попытка $attempt)...");
 
           final apiUrl = Uri.https(
             'generativelanguage.googleapis.com',
@@ -459,15 +455,41 @@ $externalContent
             successfulText = jsonResult['candidates']?[0]?['content']?['parts']?[0]?['text'];
             break;
           } else if (aiRes.statusCode == 503) {
-            lastError = "Сервер Gemini перегружен (503). Повтор...";
+            lastError = "Сервер Gemini временно перегружен (503). Повтор...";
             await Future.delayed(const Duration(seconds: 2));
+          } else if (aiRes.statusCode == 429) {
+            lastError = "Превышен минутный лимит запросов Gemini (429). Подождите 30 секунд.";
+            break;
           } else {
             lastError = "Ошибка Gemini (HTTP ${aiRes.statusCode}): ${aiRes.body}";
             break;
           }
         }
       } else if (_selectedProvider == "groq") {
-        setState(() => _statusMessage = "Синхронизация через Groq...");
+        setState(() => _statusMessage = "Запрос доступных моделей Groq...");
+        
+        // Автоматическое определение первой доступной модели в личном аккаунте Groq
+        String targetGroqModel = "llama-3.1-70b-versatile";
+        try {
+          final modelsUri = Uri.https('api.groq.com', '/openai/v1/models');
+          final mRes = await http.get(modelsUri, headers: {
+            "Authorization": "Bearer $currentKey"
+          }).timeout(const Duration(seconds: 8));
+          
+          if (mRes.statusCode == 200) {
+            final mData = jsonDecode(mRes.body);
+            final List list = mData['data'] ?? [];
+            for (var item in list) {
+              final String id = item['id']?.toString() ?? '';
+              if (id.contains('llama') || id.contains('mixtral') || id.contains('gemma')) {
+                targetGroqModel = id;
+                break;
+              }
+            }
+          }
+        } catch (_) {}
+
+        setState(() => _statusMessage = "Синхронизация через Groq ($targetGroqModel)...");
         final apiUrl = Uri.https('api.groq.com', '/openai/v1/chat/completions');
 
         final aiRes = await http.post(
@@ -477,7 +499,7 @@ $externalContent
             "Authorization": "Bearer $currentKey"
           },
           body: jsonEncode({
-            "model": "llama-3.3-70b-versatile",
+            "model": targetGroqModel,
             "messages": [
               {"role": "user", "content": prompt}
             ],
@@ -528,7 +550,7 @@ $externalContent
           parsed['current_season'] = currentSeason;
           await _persistSeasonData(parsed);
         } else {
-          setState(() => _statusMessage = "Ошибка декодирования ответа ИИ.");
+          setState(() => _statusMessage = "Ошибка декодирования формата JSON.");
         }
       } else {
         setState(() => _statusMessage = lastError.isNotEmpty ? lastError : "Не удалось получить ответ.");
