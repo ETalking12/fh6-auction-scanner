@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_tesseract_ocr/flutter_tesseract_ocr.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 List<CameraDescription> cameras = [];
 
@@ -488,7 +488,7 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
 }
 
 // ==========================================
-// 2. СКАНЕР АУКЦИОНА СТАБИЛЬНЫЙ
+// 2. СКАНЕР АУКЦИОНА НА GOOGLE ML KIT (МОЛНИЕНОСНЫЙ)
 // ==========================================
 class ScannerTab extends StatefulWidget {
   final Function(String name, int price) onAddToPortfolio;
@@ -499,14 +499,15 @@ class ScannerTab extends StatefulWidget {
 
 class _ScannerTabState extends State<ScannerTab> {
   CameraController? _controller;
+  final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
   bool _isProcessing = false;
   bool _isScanning = false;
-  bool _isTorchOn = false; // Фонарик выключен по умолчанию
+  bool _isTorchOn = false;
   
   final String _currentSlot = "Слот 1 (Авто)";
   int _detectedPrice = 0;
   bool _isSnipeAlert = false;
-  String _lastRawText = "Инициализация...";
+  String _lastRawText = "Готов к сканированию...";
   String _statusBanner = "Наведите рамку на цены выкупа";
 
   @override
@@ -517,10 +518,10 @@ class _ScannerTabState extends State<ScannerTab> {
 
   Future<void> _initCamera() async {
     if (cameras.isEmpty) return;
-    _controller = CameraController(cameras[0], ResolutionPreset.low, enableAudio: false);
+    _controller = CameraController(cameras[0], ResolutionPreset.medium, enableAudio: false);
     try {
       await _controller!.initialize();
-      await _controller!.setFlashMode(FlashMode.off); // Принудительно выключаем вспышку
+      await _controller!.setFlashMode(FlashMode.off);
       if (!mounted) return;
       setState(() {});
       _isScanning = true;
@@ -547,24 +548,19 @@ class _ScannerTabState extends State<ScannerTab> {
         _isProcessing = true;
         try {
           final image = await _controller!.takePicture();
-          
           if (!mounted) break;
-          setState(() => _lastRawText = "Анализ кадра...");
 
-          final text = await FlutterTesseractOcr.extractText(
-            image.path,
-            language: 'eng',
-            args: {"tessedit_char_whitelist": "0123456789,CR "}
-          );
+          final inputImage = InputImage.fromFilePath(image.path);
+          final recognizedText = await _textRecognizer.processImage(inputImage);
 
           if (!mounted) break;
-          
-          final cleanedView = text.trim().replaceAll('\n', ' ');
+
+          final raw = recognizedText.text.trim().replaceAll('\n', ' ');
           setState(() {
-            _lastRawText = cleanedView.isEmpty ? "Текст не найден" : cleanedView;
+            _lastRawText = raw.isEmpty ? "Текст не найден" : (raw.length > 35 ? "${raw.substring(0, 35)}..." : raw);
           });
 
-          final cleanNumbers = text.replaceAll(RegExp(r'[^0-9]'), '');
+          final cleanNumbers = raw.replaceAll(RegExp(r'[^0-9]'), '');
           final match = RegExp(r'\d{6,8}').firstMatch(cleanNumbers);
           
           if (match != null) {
@@ -572,16 +568,14 @@ class _ScannerTabState extends State<ScannerTab> {
             _processPrice(foundPrice);
           }
         } catch (e) {
-          debugPrint("Ошибка OCR: $e");
-          if (mounted) {
-            setState(() => _lastRawText = "Ждем кадр...");
-          }
+          debugPrint("ML Kit Error: $e");
+          if (mounted) setState(() => _lastRawText = "Ошибка распознавания");
         } finally {
           _isProcessing = false;
         }
       }
-      // Увеличенная пауза (2.5 сек) для защиты от перегрузки памяти и зависаний
-      await Future.delayed(const Duration(milliseconds: 2500));
+      // Опрос каждые 1.2 секунды — ML Kit работает очень быстро
+      await Future.delayed(const Duration(milliseconds: 1200));
     }
   }
 
@@ -604,6 +598,7 @@ class _ScannerTabState extends State<ScannerTab> {
   @override
   void dispose() {
     _isScanning = false;
+    _textRecognizer.close();
     _controller?.dispose();
     super.dispose();
   }
@@ -626,7 +621,7 @@ class _ScannerTabState extends State<ScannerTab> {
         children: [
           Positioned.fill(child: CameraPreview(_controller!)),
           
-          // Кнопка ручного включения/выключения фонарика в правом верхнем углу
+          // Кнопка фонарика
           Positioned(
             top: 45, right: 20,
             child: FloatingActionButton.small(
@@ -655,7 +650,7 @@ class _ScannerTabState extends State<ScannerTab> {
             ),
           ),
           
-          // Нижняя панель с отладкой
+          // Нижняя панель
           Positioned(
             bottom: 20, left: 16, right: 16,
             child: Container(
