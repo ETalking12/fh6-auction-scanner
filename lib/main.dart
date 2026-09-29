@@ -305,7 +305,8 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
           if (!mounted) return;
           setState(() => _statusMessage = "Анализ через $modelName (попытка $attempt)...");
 
-          final apiUrl = Uri.parse("[https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$){Uri.encodeComponent(cleanKey)}");
+          final encodedKey = Uri.encodeComponent(cleanKey);
+          final apiUrl = Uri.parse("[https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$encodedKey](https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$encodedKey)");
           final aiRes = await http.post(
             apiUrl,
             headers: {"Content-Type": "application/json"},
