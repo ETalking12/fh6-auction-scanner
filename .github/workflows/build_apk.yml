@@ -28,6 +28,9 @@ jobs:
       - name: Create fresh Android platform safely
         run: flutter create . --org com.fh6.scanner --project-name fh6_auction_scanner --platforms android
 
+      - name: Fix minSdkVersion for ML Kit
+        run: sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle
+
       - name: Install dependencies
         run: flutter pub get
 
