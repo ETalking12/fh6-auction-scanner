@@ -104,11 +104,10 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
 
   @override
   Widget build(BuildContext context) {
-    // Теперь здесь 4 вкладки
     final screens = [
       ScannerTab(onAddToPortfolio: _addQuickSnipeToPortfolio),
       const StrategyAdvisorTab(),
-      const SmartAdvisorTab(), // Вкладка с ИИ
+      const SmartAdvisorTab(),
       WatchlistTab(portfolio: _portfolio, onUpdate: () => _savePortfolio()),
     ];
 
@@ -120,7 +119,7 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
         backgroundColor: const Color(0xFF161616),
         selectedItemColor: Colors.greenAccent,
         unselectedItemColor: Colors.white54,
-        type: BottomNavigationBarType.fixed, // Обязательно для 4 элементов
+        type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.camera_alt), label: "Сканер"),
           BottomNavigationBarItem(icon: Icon(Icons.stream), label: "Стрим"),
@@ -143,8 +142,8 @@ class SmartAdvisorTab extends StatefulWidget {
 }
 
 class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
-  // ВАЖНО: ЗАМЕНИТЕ НА ВАШ КЛЮЧ ОТ GOOGLE AI STUDIO
-  static const _apiKey = 'AIzaSyBOoFuwfDEIOeQ2JFcutYOPt7GDbE0Anbc';
+  // ВАЖНО: Вставьте свой ключ внутри одинарных кавычек
+  static const _apiKey = 'ВАШ_GEMINI_API_KEY';
   
   bool _isAnalyzing = false;
   String _aiResponse = "Нажмите кнопку, чтобы Gemini прочитал сайт forza.net/fh6playlists и выдал советы...";
@@ -165,7 +164,8 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       
       String cleanText = response.body.replaceAll(RegExp(r'<[^>]*>'), ' ').replaceAll(RegExp(r'\s+'), ' ');
 
-      final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: _apiKey);
+      // Модель изменена на gemini-pro для совместимости
+      final model = GenerativeModel(model: 'gemini-pro', apiKey: _apiKey);
       final prompt = '''
       Ты — эксперт по экономике Forza Horizon. Сегодня: ${DateTime.now()}.
       Ниже приведен текст с сайта forza.net/fh6playlists.
