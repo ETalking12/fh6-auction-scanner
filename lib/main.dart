@@ -144,7 +144,7 @@ class SmartAdvisorTab extends StatefulWidget {
 
 class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   // ВАЖНО: ЗАМЕНИТЕ НА ВАШ КЛЮЧ ОТ GOOGLE AI STUDIO
-  static const _apiKey = AIzaSyBOoFuwfDEIOeQ2JFcutYOPt7GDbE0Anbc;
+  static const _apiKey = 'AIzaSyBOoFuwfDEIOeQ2JFcutYOPt7GDbE0Anbc';
   
   bool _isAnalyzing = false;
   String _aiResponse = "Нажмите кнопку, чтобы Gemini прочитал сайт forza.net/fh6playlists и выдал советы...";
