@@ -195,7 +195,6 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   Future<void> _loadStateAndCheckTrigger() async {
     final prefs = await SharedPreferences.getInstance();
     String provider = prefs.getString("ai_provider_selection") ?? "gemini";
-    // Сброс старых удаленных провайдеров на Gemini
     if (provider == "deepseek" || provider == "groq" || provider == "openrouter") {
       provider = "gemini";
     }
@@ -432,20 +431,18 @@ $externalContent
             ],
             "temperature": 0.1
           }),
-        ).timeout(const Duration(seconds: 35));
+        ).timeout(const Duration(seconds: 60)); // <-- Тайм-аут увеличен до 60 секунд для спящих моделей
 
         if (aiRes.statusCode == 200) {
           final jsonResult = jsonDecode(utf8.decode(aiRes.bodyBytes));
           successfulText = jsonResult['choices']?[0]?['message']?['content'];
         } else if (aiRes.statusCode == 503) {
-          lastError = "Модель Hugging Face загружается. Подождите 20 секунд и повторите.";
+          lastError = "Модель Hugging Face загружается. Подождите 20-30 секунд и повторите.";
         } else {
           lastError = "Ошибка Hugging Face HTTP ${aiRes.statusCode}: ${aiRes.body}";
         }
       }
 
-      // ПРАВКА БАГА ФОНОВОГО СОХРАНЕНИЯ
-      // Сохраняем данные в память ДО проверки mounted, чтобы результат не потерялся при переключении вкладок
       if (successfulText != null) {
         final parsed = _extractJsonSafely(successfulText);
         if (parsed != null) {
@@ -459,7 +456,7 @@ $externalContent
         if (mounted) setState(() => _statusMessage = lastError.isNotEmpty ? lastError : "Не удалось получить ответ.");
       }
     } catch (e) {
-      if (mounted) setState(() => _statusMessage = "Ошибка сети: проверьте подключение.");
+      if (mounted) setState(() => _statusMessage = "Системный сбой: $e"); // <-- Выводим реальную ошибку
     } finally {
       if (mounted) setState(() => _isAnalyzing = false);
     }
@@ -742,7 +739,6 @@ class _ScannerTabState extends State<ScannerTab> {
         _isScanning = true;
         _startScanLoop();
       }).catchError((e) {
-        // ПРАВКА БАГА КАМЕРЫ: Предотвращаем бесконечную загрузку, если нет разрешения
         debugPrint("Ошибка камеры: $e");
         if (mounted) {
           setState(() {
