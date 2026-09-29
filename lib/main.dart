@@ -488,7 +488,7 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
 }
 
 // ==========================================
-// 2. УЛУЧШЕННЫЙ СКАНЕР АУКЦИОНА С ВИДИМЫМ ЛОГОМ И ШИРОКОЙ РАМКОЙ
+// 2. СКАНЕР АУКЦИОНА С РУЧНЫМ УПРАВЛЕНИЕМ ФОНАРИКОМ
 // ==========================================
 class ScannerTab extends StatefulWidget {
   final Function(String name, int price) onAddToPortfolio;
@@ -501,82 +501,94 @@ class _ScannerTabState extends State<ScannerTab> {
   CameraController? _controller;
   bool _isProcessing = false;
   bool _isScanning = false;
-  final String _currentSlot = "Слот 1 (Авто)";
+  bool _isTorchOn = false; // Фонарик выключен по умолчанию
   
+  final String _currentSlot = "Слот 1 (Авто)";
   int _detectedPrice = 0;
   bool _isSnipeAlert = false;
-  String _lastRawText = "Ожидание сканирования...";
+  String _lastRawText = "Инициализация...";
   String _statusBanner = "Наведите рамку на цены выкупа";
 
   @override
   void initState() {
     super.initState();
-    if (cameras.isNotEmpty) {
-      _controller = CameraController(cameras[0], ResolutionPreset.medium, enableAudio: false);
-      _controller!.initialize().then((_) {
-        if (!mounted) return;
-        setState(() {});
-        _isScanning = true;
-        _startScanLoop();
-      }).catchError((e) {
-        debugPrint("Ошибка камеры: $e");
-        if (mounted) setState(() => _statusBanner = "Ошибка: Нет доступа к камере");
-      });
+    _initCamera();
+  }
+
+  Future<void> _initCamera() async {
+    if (cameras.isEmpty) return;
+    _controller = CameraController(cameras[0], ResolutionPreset.low, enableAudio: false);
+    try {
+      await _controller!.initialize();
+      await _controller!.setFlashMode(FlashMode.off); // Принудительно гасим вспышку
+      if (!mounted) return;
+      setState(() {});
+      _isScanning = true;
+      _startScanLoop();
+    } catch (e) {
+      debugPrint("Ошибка камеры: $e");
+      if (mounted) setState(() => _statusBanner = "Ошибка камеры: $e");
+    }
+  }
+
+  Future<void> _toggleTorch() async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    try {
+      setState(() => _isTorchOn = !_isTorchOn);
+      await _controller!.setFlashMode(_isTorchOn ? FlashMode.torch : FlashMode.off);
+    } catch (e) {
+      debugPrint("Ошибка фонарика: $e");
     }
   }
 
   void _startScanLoop() async {
     while (_isScanning && mounted) {
       if (_controller != null && _controller!.value.isInitialized && !_isProcessing) {
-        await _captureAndAnalyze();
-      }
-      await Future.delayed(const Duration(milliseconds: 900));
-    }
-  }
+        _isProcessing = true;
+        try {
+          final image = await _controller!.takePicture();
+          
+          if (!mounted) break;
+          setState(() => _lastRawText = "Анализ кадра...");
 
-  Future<void> _captureAndAnalyze() async {
-    if (!mounted || !_isScanning) return;
-    _isProcessing = true;
-    try {
-      final photo = await _controller!.takePicture();
-      
-      // Распознаем текст с экрана
-      final text = await FlutterTesseractOcr.extractText(
-        photo.path,
-        language: 'eng',
-        args: {"tessedit_char_whitelist": "0123456789,CR "}
-      );
+          final text = await FlutterTesseractOcr.extractText(
+            image.path,
+            language: 'eng',
+            args: {"tessedit_char_whitelist": "0123456789,CR "}
+          );
 
-      if (mounted) {
-        setState(() {
-          _lastRawText = text.trim().replaceAll('\n', ' ');
-          if (_lastRawText.length > 35) {
-            _lastRawText = "${_lastRawText.substring(0, 35)}...";
+          if (!mounted) break;
+          
+          final cleanedView = text.trim().replaceAll('\n', ' ');
+          setState(() {
+            _lastRawText = cleanedView.isEmpty ? "Текст не найден" : cleanedView;
+          });
+
+          final cleanNumbers = text.replaceAll(RegExp(r'[^0-9]'), '');
+          final match = RegExp(r'\d{6,8}').firstMatch(cleanNumbers);
+          
+          if (match != null) {
+            int foundPrice = int.parse(match.group(0)!);
+            _processPrice(foundPrice);
           }
-        });
+        } catch (e) {
+          debugPrint("Ошибка в цикле сканирования: $e");
+          if (mounted) {
+            setState(() => _lastRawText = "Ошибка OCR / Память");
+          }
+        } finally {
+          _isProcessing = false;
+        }
       }
-
-      // Очищаем от мусора, ищем миллионные цены (от 6 до 8 цифр)
-      final cleanText = text.replaceAll(RegExp(r'[^0-9]'), '');
-      final match = RegExp(r'\d{6,8}').firstMatch(cleanText);
-      
-      if (match != null) {
-        int foundPrice = int.parse(match.group(0)!);
-        _processPrice(foundPrice);
-      }
-    } catch (e) {
-      debugPrint("OCR Error: $e");
-    } finally {
-      if (mounted) _isProcessing = false;
+      await Future.delayed(const Duration(milliseconds: 1200));
     }
   }
 
   void _processPrice(int price) {
-    if (price < 100000 || !mounted) return; // Фильтруем мелкие числа
+    if (price < 100000 || !mounted) return;
 
     setState(() {
       _detectedPrice = price;
-      // Если цена выкупа ниже 6 миллионов (отличный снайп для дорогих машин)
       if (price <= 6000000) {
         _isSnipeAlert = true;
         _statusBanner = "🔥 СНАЙП! Найдена низкая цена: $price CR";
@@ -613,7 +625,20 @@ class _ScannerTabState extends State<ScannerTab> {
         children: [
           Positioned.fill(child: CameraPreview(_controller!)),
           
-          // Увеличенная рамка сканирования для удобного захвата строк цен
+          // Кнопка ручного включения/выключения фонарика
+          Positioned(
+            top: 45, right: 20,
+            child: FloatingActionButton.small(
+              backgroundColor: _isTorchOn ? Colors.amberAccent : Colors.black54,
+              onPressed: _toggleTorch,
+              child: Icon(
+                _isTorchOn ? Icons.flash_on : Icons.flash_off,
+                color: _isTorchOn ? Colors.black : Colors.white,
+              ),
+            ),
+          ),
+
+          // Рамка сканирования
           Center(
             child: Container(
               width: 330, height: 130,
@@ -629,7 +654,7 @@ class _ScannerTabState extends State<ScannerTab> {
             ),
           ),
           
-          // Нижняя панель с отладкой и статусом
+          // Нижняя панель с отладкой
           Positioned(
             bottom: 20, left: 16, right: 16,
             child: Container(
@@ -642,7 +667,6 @@ class _ScannerTabState extends State<ScannerTab> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Индикатор работы OCR (показывает что видит камера)
                   Row(
                     children: [
                       const Icon(Icons.remove_red_eye, color: Colors.greenAccent, size: 14),
