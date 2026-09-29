@@ -26,44 +26,24 @@ jobs:
 
       - name: Create Self-Learning Flutter app
         run: |
-          # Создаем проект
           flutter create --org com.fh6.scanner --platforms android app_build
           cd app_build
 
-          # Устанавливаем нужные зависимости (Google ML Kit + камера + сети)
           flutter pub add camera:0.11.0+2 google_mlkit_text_recognition:0.13.0 shared_preferences:2.2.2 http:^1.2.2
 
-          # Копируем ваш main.dart из репозитория
           if [ -f "../lib/main.dart" ]; then
             cp ../lib/main.dart lib/main.dart
           fi
 
-          # Выставляем совместимость SDK (решает ошибку Android SDK 35)
           sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/g' android/app/build.gradle || true
           sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/g' android/app/build.gradle || true
           sed -i 's/minSdk = flutter.minSdkVersion/minSdkVersion = 21/g' android/app/build.gradle || true
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle || true
 
-          # Создаем файл правил ProGuard, чтобы R8 не ругался на опциональные модули ML Kit
-          echo "-keep class com.google.mlkit.** { * }" > android/app/proguard-rules.pro
-          echo "-dontwarn com.google.mlkit.**" >> android/app/proguard-rules.pro
-
-          # Подключаем proguard-rules.pro в build.gradle, если он еще не прописан
-          if ! grep -q "proguard-rules.pro" android/app/build.gradle; then
-            sed -i '/signingConfigs {/i \
-     buildTypes {\
-        release {\
-            proguardFiles getDefaultProguardFile(\"proguard-android.txt\"), \"proguard-rules.pro\"\
-        }\
-    }' android/app/build.gradle || true
-          fi
-
-          # Разрешения на камеру, интернет и вибрацию
           sed -i '/<application/i <uses-permission android:name="android.permission.CAMERA"/>' android/app/src/main/AndroidManifest.xml
           sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET"/>' android/app/src/main/AndroidManifest.xml
           sed -i '/<application/i <uses-permission android:name="android.permission.VIBRATE"/>' android/app/src/main/AndroidManifest.xml
 
-          # Сборка APK
           flutter build apk --release --no-shrink
 
       - name: Upload APK Artifact
