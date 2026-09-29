@@ -136,7 +136,7 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
 }
 
 // =======================================================
-// 1. ИИ-АНАЛИТИК (3 ПРОВАЙДЕРА + УМНОЕ ОБНОВЛЕНИЕ)
+// 1. ИИ-АНАЛИТИК (GEMINI / HUGGING FACE)
 // =======================================================
 class SmartAdvisorTab extends StatefulWidget {
   const SmartAdvisorTab({super.key});
@@ -148,10 +148,9 @@ class SmartAdvisorTab extends StatefulWidget {
 class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   final TextEditingController _keyController = TextEditingController();
 
-  String _selectedProvider = "gemini";
+  String _selectedProvider = "gemini"; 
   String _geminiKey = "";
-  String _groqKey = "";
-  String _openRouterKey = "";
+  String _hfKey = "";
 
   bool _isAnalyzing = false;
   String _statusMessage = "";
@@ -195,10 +194,14 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
 
   Future<void> _loadStateAndCheckTrigger() async {
     final prefs = await SharedPreferences.getInstance();
-    final provider = prefs.getString("ai_provider_selection") ?? "gemini";
+    String provider = prefs.getString("ai_provider_selection") ?? "gemini";
+    // Сброс старых удаленных провайдеров на Gemini
+    if (provider == "deepseek" || provider == "groq" || provider == "openrouter") {
+      provider = "gemini";
+    }
+    
     final gKey = (prefs.getString("gemini_user_api_key") ?? "").trim();
-    final rKey = (prefs.getString("groq_user_api_key") ?? "").trim();
-    final oKey = (prefs.getString("openrouter_user_api_key") ?? "").trim();
+    final hKey = (prefs.getString("huggingface_user_api_key") ?? "").trim();
 
     final cachedJson = prefs.getString("cached_season_master_json");
     final updated = prefs.getString("cached_season_master_time") ?? "";
@@ -208,15 +211,12 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     setState(() {
       _selectedProvider = provider;
       _geminiKey = gKey;
-      _groqKey = rKey;
-      _openRouterKey = oKey;
+      _hfKey = hKey;
 
       if (provider == "gemini") {
         _keyController.text = gKey;
-      } else if (provider == "groq") {
-        _keyController.text = rKey;
       } else {
-        _keyController.text = oKey;
+        _keyController.text = hKey;
       }
 
       _lastUpdatedTime = updated;
@@ -228,8 +228,8 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       }
 
       if (_structuredData == null) {
-        _statusMessage = _getCurrentKey().isEmpty 
-            ? "Введите API ключ выбранного ИИ."
+        _statusMessage = _getCurrentKey().isEmpty
+            ? "Введите API ключ выбранного провайдера."
             : "Нажмите кнопку для синхронизации наград.";
       }
     });
@@ -241,9 +241,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   }
 
   String _getCurrentKey() {
-    if (_selectedProvider == "gemini") return _geminiKey;
-    if (_selectedProvider == "groq") return _groqKey;
-    return _openRouterKey;
+    return _selectedProvider == "gemini" ? _geminiKey : _hfKey;
   }
 
   Future<void> _saveApiKey() async {
@@ -253,18 +251,15 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     if (_selectedProvider == "gemini") {
       await prefs.setString("gemini_user_api_key", key);
       setState(() => _geminiKey = key);
-    } else if (_selectedProvider == "groq") {
-      await prefs.setString("groq_user_api_key", key);
-      setState(() => _groqKey = key);
     } else {
-      await prefs.setString("openrouter_user_api_key", key);
-      setState(() => _openRouterKey = key);
+      await prefs.setString("huggingface_user_api_key", key);
+      setState(() => _hfKey = key);
     }
 
     if (!mounted) return;
     FocusScope.of(context).unfocus();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Ключ сохранен"), duration: Duration(seconds: 2)),
+      const SnackBar(content: Text("Ключ сохранен в памяти устройства"), duration: Duration(seconds: 2)),
     );
   }
 
@@ -277,12 +272,9 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     if (_selectedProvider == "gemini") {
       _geminiKey = currentInput;
       await prefs.setString("gemini_user_api_key", currentInput);
-    } else if (_selectedProvider == "groq") {
-      _groqKey = currentInput;
-      await prefs.setString("groq_user_api_key", currentInput);
     } else {
-      _openRouterKey = currentInput;
-      await prefs.setString("openrouter_user_api_key", currentInput);
+      _hfKey = currentInput;
+      await prefs.setString("huggingface_user_api_key", currentInput);
     }
 
     await prefs.setString("ai_provider_selection", provider);
@@ -292,17 +284,16 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       _selectedProvider = provider;
       if (provider == "gemini") {
         _keyController.text = _geminiKey;
-      } else if (provider == "groq") {
-        _keyController.text = _groqKey;
       } else {
-        _keyController.text = _openRouterKey;
+        _keyController.text = _hfKey;
       }
     });
   }
 
   Future<void> _persistSeasonData(Map<String, dynamic> structured) async {
     final prefs = await SharedPreferences.getInstance();
-    final nowStr = "${DateTime.now().day.toString().padLeft(2, '0')}.${DateTime.now().month.toString().padLeft(2, '0')} ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}";
+    final nowStr =
+        "${DateTime.now().day.toString().padLeft(2, '0')}.${DateTime.now().month.toString().padLeft(2, '0')} ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}";
 
     await prefs.setString("cached_season_master_json", jsonEncode(structured));
     await prefs.setString("cached_season_master_time", nowStr);
@@ -368,7 +359,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
 Внешний источник:
 $externalContent
 
-Верни СТРОГО валидный JSON без markdown:
+Верни СТРОГО валидный JSON без markdown и кавычек ```json:
 {
   "current_season": "$currentSeason",
   "series_number": "Название актуальной серии",
@@ -401,7 +392,13 @@ $externalContent
             apiUrl,
             headers: {"Content-Type": "application/json"},
             body: jsonEncode({
-              "contents": [{"parts": [{"text": prompt}]}]
+              "contents": [
+                {
+                  "parts": [
+                    {"text": prompt}
+                  ]
+                }
+              ]
             }),
           ).timeout(const Duration(seconds: 30));
 
@@ -417,89 +414,52 @@ $externalContent
             break;
           }
         }
-      } else if (_selectedProvider == "groq") {
-        setState(() => _statusMessage = "Проверка доступных моделей Groq...");
-        String targetGroqModel = "llama-3.1-70b-versatile";
-        try {
-          final modelsUri = Uri.https('api.groq.com', '/openai/v1/models');
-          final mRes = await http.get(modelsUri, headers: {"Authorization": "Bearer $currentKey"}).timeout(const Duration(seconds: 8));
-          if (mRes.statusCode == 200) {
-            final mData = jsonDecode(mRes.body);
-            final List list = mData['data'] ?? [];
-            for (var item in list) {
-              final String id = item['id']?.toString() ?? '';
-              if (id.contains('llama') || id.contains('mixtral') || id.contains('gemma')) {
-                targetGroqModel = id;
-                break;
-              }
-            }
-          }
-        } catch (_) {}
-
+      } else if (_selectedProvider == "huggingface") {
         if (!mounted) return;
-        setState(() => _statusMessage = "Синхронизация Groq ($targetGroqModel)...");
-        final apiUrl = Uri.https('api.groq.com', '/openai/v1/chat/completions');
-
-        final aiRes = await http.post(
-          apiUrl,
-          headers: {"Content-Type": "application/json", "Authorization": "Bearer $currentKey"},
-          body: jsonEncode({
-            "model": targetGroqModel,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.1
-          }),
-        ).timeout(const Duration(seconds: 30));
-
-        if (aiRes.statusCode == 200) {
-          final jsonResult = jsonDecode(aiRes.body);
-          successfulText = jsonResult['choices']?[0]?['message']?['content'];
-        } else {
-          lastError = "Ошибка Groq HTTP ${aiRes.statusCode}";
-        }
-      } else {
-        setState(() => _statusMessage = "Синхронизация OpenRouter...");
-        final apiUrl = Uri.https('openrouter.ai', '/api/v1/chat/completions');
+        setState(() => _statusMessage = "Подключение к Hugging Face (Mistral Nemo)...");
+        final apiUrl = Uri.https('api-inference.huggingface.co', '/models/mistralai/Mistral-Nemo-Instruct-2407/v1/chat/completions');
 
         final aiRes = await http.post(
           apiUrl,
           headers: {
             "Content-Type": "application/json",
-            "Authorization": "Bearer $currentKey",
-            "HTTP-Referer": "https://github.com/ETalking12/fh6-auction-scanner",
-            "X-Title": "FH6 Scanner"
+            "Authorization": "Bearer $currentKey"
           },
           body: jsonEncode({
-            "model": "meta-llama/llama-3.3-70b-instruct:free",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.2
+            "model": "mistralai/Mistral-Nemo-Instruct-2407",
+            "messages": [
+              {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.1
           }),
-        ).timeout(const Duration(seconds: 40));
+        ).timeout(const Duration(seconds: 35));
 
         if (aiRes.statusCode == 200) {
-          final jsonResult = jsonDecode(aiRes.body);
+          final jsonResult = jsonDecode(utf8.decode(aiRes.bodyBytes));
           successfulText = jsonResult['choices']?[0]?['message']?['content'];
+        } else if (aiRes.statusCode == 503) {
+          lastError = "Модель Hugging Face загружается. Подождите 20 секунд и повторите.";
         } else {
-          lastError = "Ошибка OpenRouter HTTP ${aiRes.statusCode}";
+          lastError = "Ошибка Hugging Face HTTP ${aiRes.statusCode}: ${aiRes.body}";
         }
       }
 
-      if (!mounted) return;
-
+      // ПРАВКА БАГА ФОНОВОГО СОХРАНЕНИЯ
+      // Сохраняем данные в память ДО проверки mounted, чтобы результат не потерялся при переключении вкладок
       if (successfulText != null) {
         final parsed = _extractJsonSafely(successfulText);
         if (parsed != null) {
           parsed['current_season'] = currentSeason;
-          await _persistSeasonData(parsed);
-          setState(() => _statusMessage = "Успешно обновлено через $_selectedProvider.");
+          await _persistSeasonData(parsed); 
+          if (mounted) setState(() => _statusMessage = "Успешно обновлено через $_selectedProvider.");
         } else {
-          setState(() => _statusMessage = "Ошибка: ИИ вернул неверный формат.");
+          if (mounted) setState(() => _statusMessage = "Ошибка: ИИ вернул неверный формат JSON.");
         }
       } else {
-        setState(() => _statusMessage = lastError.isNotEmpty ? lastError : "Не удалось получить ответ.");
+        if (mounted) setState(() => _statusMessage = lastError.isNotEmpty ? lastError : "Не удалось получить ответ.");
       }
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _statusMessage = "Ошибка сети: проверьте подключение.");
+      if (mounted) setState(() => _statusMessage = "Ошибка сети: проверьте подключение.");
     } finally {
       if (mounted) setState(() => _isAnalyzing = false);
     }
@@ -539,26 +499,21 @@ $externalContent
                     selected: _selectedProvider == "gemini",
                     selectedColor: Colors.greenAccent,
                     backgroundColor: const Color(0xFF1E1E1E),
-                    labelStyle: TextStyle(color: _selectedProvider == "gemini" ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
+                    labelStyle: TextStyle(
+                        color: _selectedProvider == "gemini" ? Colors.black : Colors.white,
+                        fontWeight: FontWeight.bold),
                     onSelected: (val) => _switchProvider("gemini"),
                   ),
                   const SizedBox(width: 6),
                   ChoiceChip(
-                    label: const Text("Groq", style: TextStyle(fontSize: 11)),
-                    selected: _selectedProvider == "groq",
+                    label: const Text("Hugging Face", style: TextStyle(fontSize: 11)),
+                    selected: _selectedProvider == "huggingface",
                     selectedColor: Colors.greenAccent,
                     backgroundColor: const Color(0xFF1E1E1E),
-                    labelStyle: TextStyle(color: _selectedProvider == "groq" ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
-                    onSelected: (val) => _switchProvider("groq"),
-                  ),
-                  const SizedBox(width: 6),
-                  ChoiceChip(
-                    label: const Text("OpenRouter (Free)", style: TextStyle(fontSize: 11)),
-                    selected: _selectedProvider == "openrouter",
-                    selectedColor: Colors.greenAccent,
-                    backgroundColor: const Color(0xFF1E1E1E),
-                    labelStyle: TextStyle(color: _selectedProvider == "openrouter" ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
-                    onSelected: (val) => _switchProvider("openrouter"),
+                    labelStyle: TextStyle(
+                        color: _selectedProvider == "huggingface" ? Colors.black : Colors.white,
+                        fontWeight: FontWeight.bold),
+                    onSelected: (val) => _switchProvider("huggingface"),
                   ),
                 ],
               ),
@@ -572,7 +527,7 @@ $externalContent
                     obscureText: true,
                     style: const TextStyle(color: Colors.white, fontSize: 13),
                     decoration: InputDecoration(
-                      hintText: "Ключ $_selectedProvider...",
+                      hintText: _selectedProvider == "huggingface" ? "Ключ (hf_...)" : "Ключ $_selectedProvider...",
                       hintStyle: const TextStyle(color: Colors.white38, fontSize: 11),
                       filled: true,
                       fillColor: const Color(0xFF1E1E1E),
@@ -614,7 +569,9 @@ $externalContent
             Expanded(
               child: _structuredData != null
                   ? _buildStructuredView(_structuredData!)
-                  : Center(child: Text(_statusMessage.isEmpty ? "Ожидание данных..." : _statusMessage, style: const TextStyle(color: Colors.white38))),
+                  : Center(
+                      child: Text(_statusMessage.isEmpty ? "Ожидание данных..." : _statusMessage,
+                          style: const TextStyle(color: Colors.white38))),
             ),
           ],
         ),
@@ -784,6 +741,14 @@ class _ScannerTabState extends State<ScannerTab> {
         setState(() {});
         _isScanning = true;
         _startScanLoop();
+      }).catchError((e) {
+        // ПРАВКА БАГА КАМЕРЫ: Предотвращаем бесконечную загрузку, если нет разрешения
+        debugPrint("Ошибка камеры: $e");
+        if (mounted) {
+          setState(() {
+            _statusBanner = "Ошибка: Нет доступа к камере";
+          });
+        }
       });
     }
   }
@@ -852,7 +817,14 @@ class _ScannerTabState extends State<ScannerTab> {
   @override
   Widget build(BuildContext context) {
     if (_controller == null || !_controller!.value.isInitialized) {
-      return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Colors.greenAccent)));
+      return Scaffold(
+        backgroundColor: Colors.black, 
+        body: Center(
+          child: _statusBanner.contains("Ошибка") 
+              ? Text(_statusBanner, style: const TextStyle(color: Colors.redAccent))
+              : const CircularProgressIndicator(color: Colors.greenAccent),
+        )
+      );
     }
     return Scaffold(
       backgroundColor: Colors.black,
@@ -861,14 +833,17 @@ class _ScannerTabState extends State<ScannerTab> {
           Positioned.fill(child: CameraPreview(_controller!)),
           Center(
             child: Container(
-              width: 290, height: 100,
+              width: 290,
+              height: 100,
               decoration: BoxDecoration(
                   border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white60, width: 2.0),
                   borderRadius: BorderRadius.circular(12)),
             ),
           ),
           Positioned(
-            bottom: 20, left: 16, right: 16,
+            bottom: 20,
+            left: 16,
+            right: 16,
             child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(14)),
