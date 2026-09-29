@@ -9,8 +9,9 @@ import 'package:flutter_tesseract_ocr/flutter_tesseract_ocr.dart';
 
 List<CameraDescription> cameras = [];
 
+// Добавлен параметр ?v=2 для обхода кэша GitHub и мгновенного получения свежих данных
 const String PLAYLIST_FEED_URL =
-    "https://raw.githubusercontent.com/ETalking12/fh6-auction-scanner/main/playlist.json";
+    "https://raw.githubusercontent.com/ETalking12/fh6-auction-scanner/main/playlist.json?v=2";
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -110,7 +111,7 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
   Widget build(BuildContext context) {
     final screens = [
       ScannerTab(onAddToPortfolio: _addQuickSnipeToPortfolio),
-      const StrategyAdvisorTab(), // Автоматический хаб данных с GitHub
+      const StrategyAdvisorTab(),
       WatchlistTab(portfolio: _portfolio, onUpdate: () => _savePortfolio()),
     ];
 
