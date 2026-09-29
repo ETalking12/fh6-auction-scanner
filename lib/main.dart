@@ -145,7 +145,6 @@ class SmartAdvisorTab extends StatefulWidget {
 }
 
 class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
-  // Ключ установлен корректно
   static const _apiKey = 'AIzaSyBOoFuwfDEIOeQ2JFcutYOPt7GDbE0Anbc';
   
   bool _isAnalyzing = false;
@@ -168,7 +167,8 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       
       String cleanText = response.body.replaceAll(RegExp(r'<[^>]*>'), ' ').replaceAll(RegExp(r'\s+'), ' ');
 
-      final model = GenerativeModel(model: 'gemini-pro', apiKey: _apiKey);
+      // ИСПОЛЬЗУЕМ АКТУАЛЬНУЮ МОДЕЛЬ
+      final model = GenerativeModel(model: 'gemini-1.5-pro', apiKey: _apiKey);
       final prompt = '''
       Ты — эксперт по экономике Forza Horizon. Сегодня: ${DateTime.now()}.
       Ниже приведен текст с сайта forza.net/fh6playlists.
