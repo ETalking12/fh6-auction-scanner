@@ -150,9 +150,9 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
   }
 }
 
-// ==========================================
-// 1. ИИ-АНАЛИТИК САЙТА
-// ==========================================
+// =======================================================
+// 1. ИИ-АНАЛИТИК С АВТОНОМНЫМ ТРИГГЕРОМ ЧЕТВЕРГА
+// =======================================================
 class SmartAdvisorTab extends StatefulWidget {
   const SmartAdvisorTab({super.key});
 
@@ -176,7 +176,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   @override
   void initState() {
     super.initState();
-    _loadState();
+    _loadStateAndCheckThursdayTrigger();
   }
 
   @override
@@ -185,15 +185,43 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     super.dispose();
   }
 
-  Future<void> _loadState() async {
+  // Расчет индекса текущей недели четверга (каждый четверг 14:30 UTC = epoch + 1)
+  int _getCurrentThursdayEpoch() {
+    final anchor = DateTime.utc(2026, 9, 10, 14, 30);
+    final now = DateTime.now().toUtc();
+    final diffMs = now.difference(anchor).inMilliseconds;
+    if (diffMs < 0) return 0;
+    const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
+    return diffMs ~/ oneWeekMs;
+  }
+
+  String _calculateDynamicSeason() {
+    final epoch = _getCurrentThursdayEpoch();
+    final seasonIndex = epoch % 4;
+    switch (seasonIndex) {
+      case 0:
+        return "Summer";
+      case 1:
+        return "Autumn";
+      case 2:
+        return "Winter";
+      case 3:
+        return "Spring";
+      default:
+        return "Winter";
+    }
+  }
+
+  Future<void> _loadStateAndCheckThursdayTrigger() async {
     final prefs = await SharedPreferences.getInstance();
     final provider = prefs.getString("ai_provider_selection") ?? "gemini";
     final gKey = (prefs.getString("gemini_user_api_key") ?? "").trim();
     final rKey = (prefs.getString("groq_user_api_key") ?? "").trim();
     final oKey = (prefs.getString("openrouter_user_api_key") ?? "").trim();
 
-    final cachedJson = prefs.getString("ai_season_analysis_json");
-    final updated = prefs.getString("ai_season_analysis_time") ?? "";
+    final cachedJson = prefs.getString("cached_season_master_json");
+    final updated = prefs.getString("cached_season_master_time") ?? "";
+    final lastSyncedEpoch = prefs.getInt("last_synced_thursday_epoch") ?? -1;
 
     if (!mounted) return;
     setState(() {
@@ -224,6 +252,13 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
             : "Нажмите кнопку, чтобы получить детальный анализ сезона.";
       }
     });
+
+    // Автопроверка наступления четверга
+    final currentEpoch = _getCurrentThursdayEpoch();
+    if (_getCurrentKey().isNotEmpty && currentEpoch > lastSyncedEpoch) {
+      debugPrint("Сработал триггер четверга: наступил Epoch $currentEpoch. Автообновление...");
+      await _runAutoAnalysis(isWeeklyAutoSync: true);
+    }
   }
 
   String _getCurrentKey() {
@@ -286,13 +321,14 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     });
   }
 
-  Future<void> _saveAnalysisResult(Map<String, dynamic> structured) async {
+  Future<void> _persistSeasonData(Map<String, dynamic> structured) async {
     final prefs = await SharedPreferences.getInstance();
     final nowStr =
         "${DateTime.now().day.toString().padLeft(2, '0')}.${DateTime.now().month.toString().padLeft(2, '0')} ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}";
 
-    await prefs.setString("ai_season_analysis_json", jsonEncode(structured));
-    await prefs.setString("ai_season_analysis_time", nowStr);
+    await prefs.setString("cached_season_master_json", jsonEncode(structured));
+    await prefs.setString("cached_season_master_time", nowStr);
+    await prefs.setInt("last_synced_thursday_epoch", _getCurrentThursdayEpoch());
 
     if (!mounted) return;
     setState(() {
@@ -302,64 +338,34 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     });
   }
 
-  String _determineCurrentSeason(Map<String, dynamic>? feedJson) {
-    if (feedJson != null &&
-        feedJson.containsKey("current_season") &&
-        feedJson["current_season"].toString().trim().isNotEmpty) {
-      return feedJson["current_season"].toString().trim();
-    }
-
-    // Референсный старт сезона (10 сентября 2026, 14:30 UTC = Series 39 Summer)
-    final anchor = DateTime.utc(2026, 9, 10, 14, 30);
-    final now = DateTime.now().toUtc();
-    final diffMs = now.difference(anchor).inMilliseconds;
-
-    if (diffMs < 0) return "Summer";
-
-    const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
-    final int weeksPassed = diffMs ~/ oneWeekMs;
-    final int seasonIndex = weeksPassed % 4;
-
-    switch (seasonIndex) {
-      case 0:
-        return "Summer";
-      case 1:
-        return "Autumn";
-      case 2:
-        return "Winter";
-      case 3:
-        return "Spring";
-      default:
-        return "Summer";
-    }
-  }
-
-  Future<String> _findActiveGroqModel(String apiKey) async {
+  Future<String> _fetchLiveExternalSource() async {
+    // 1. Официальная живая страница
     try {
-      final uri = Uri.https('api.groq.com', '/openai/v1/models');
-      final res = await http.get(
-        uri,
-        headers: {
-          "Authorization": "Bearer $apiKey",
-          "Content-Type": "application/json"
-        },
-      ).timeout(const Duration(seconds: 8));
-
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final List models = data['data'] ?? [];
-        for (var m in models) {
-          final String id = m['id'] ?? '';
-          if (id.contains('llama-3.3-70b') || id.contains('versatile') || id.contains('llama-3.2') || id.contains('llama3-70b')) {
-            return id;
-          }
-        }
-        if (models.isNotEmpty) {
-          return models.first['id']?.toString() ?? 'llama-3.3-70b-versatile';
+      final siteUri = Uri.https('forza.net', '/fh6playlists');
+      final siteRes = await http.get(siteUri).timeout(const Duration(seconds: 10));
+      if (siteRes.statusCode == 200 && siteRes.body.length > 200) {
+        String text = siteRes.body
+            .replaceAll(RegExp(r'<script[\s\S]*?</script>', caseSensitive: false), ' ')
+            .replaceAll(RegExp(r'<style[\s\S]*?</style>', caseSensitive: false), ' ')
+            .replaceAll(RegExp(r'<[^>]*>'), ' ')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+        if (text.length > 3500) text = text.substring(0, 3500);
+        if (text.toLowerCase().contains("series") || text.toLowerCase().contains("points")) {
+          return "Живые данные сайта forza.net:\n$text";
         }
       }
     } catch (_) {}
-    return 'llama-3.3-70b-versatile';
+
+    // 2. Резервный облачный JSON
+    try {
+      final feedRes = await http.get(Uri.parse(PLAYLIST_FEED_URL)).timeout(const Duration(seconds: 10));
+      if (feedRes.statusCode == 200) {
+        return "Онлайн манифест GitHub:\n${feedRes.body}";
+      }
+    } catch (_) {}
+
+    return "";
   }
 
   Map<String, dynamic>? _extractJsonSafely(String rawText) {
@@ -373,49 +379,50 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     return null;
   }
 
-  Future<void> _runAutoAnalysis() async {
+  Future<void> _runAutoAnalysis({bool isWeeklyAutoSync = false}) async {
     final currentKey = _getCurrentKey().trim();
     if (currentKey.isEmpty) {
-      setState(() => _statusMessage = "Сначала введите и сохраните API ключ!");
+      if (!isWeeklyAutoSync) {
+        setState(() => _statusMessage = "Сначала введите и сохраните API ключ!");
+      }
       return;
     }
 
     setState(() {
       _isAnalyzing = true;
-      _statusMessage = "Загрузка официальных наград сезона...";
+      _statusMessage = isWeeklyAutoSync 
+          ? "Четверг: плановая автоактуализация сезона..."
+          : "Загрузка данных из внешних источников...";
     });
 
     try {
-      final feedRes = await http.get(Uri.parse(PLAYLIST_FEED_URL)).timeout(const Duration(seconds: 15));
-      if (!mounted) return;
-      if (feedRes.statusCode != 200) throw Exception("Сервер наград недоступен (Код ${feedRes.statusCode})");
+      final String externalContent = await _fetchLiveExternalSource();
+      final currentSeason = _calculateDynamicSeason();
 
-      final String rawFeedData = feedRes.body;
-      Map<String, dynamic>? parsedFeed;
-      try {
-        parsedFeed = jsonDecode(rawFeedData);
-      } catch (_) {}
-
-      final calculatedSeason = _determineCurrentSeason(parsedFeed);
-      final seriesNumber = parsedFeed?['series_number']?.toString() ?? '39';
+      setState(() => _statusMessage = "ИИ рассчитывает актуальные награды ($currentSeason)...");
 
       final prompt = '''
-Ты — эксперт по аукционам Forza Horizon.
-ВАЖНО: В ИГРЕ СЕЙЧАС ИДЕТ СЕЗОН: $calculatedSeason.
-Ниже приведены официальные награды плейлиста в JSON:
-$rawFeedData
+Ты — финансовый аналитик аукциона Forza Horizon 6.
+СЕРВЕРНЫЙ СБРОС ИГРЫ: Четверг 14:30 UTC.
+СЕЙЧАС В ИГРЕ АКТИВЕН СЕЗОН: $currentSeason.
+Серверное время: ${DateTime.now().toUtc().toIso8601String()}.
 
-Верни ответ ТОЛЬКО в чистом JSON без кавычек ```json и markdown:
+Внешний источник данных:
+$externalContent
+
+Твоя задача — вернуть информацию о серии и наградах сезона $currentSeason.
+Верни ответ СТРОГО в формате валидного JSON без markdown и кавычек ```json:
 {
-  "current_season": "$calculatedSeason",
-  "series_number": "Series $seriesNumber",
+  "current_season": "$currentSeason",
+  "series_number": "Название актуальной серии",
+  "series_rewards": "Награды за 80 PTS и 160 PTS всей серии",
   "cars_20pts": [
-    {"name": "Точное название", "season": "Summer/Autumn/Winter/Spring", "est_value": "20M CR"}
+    {"name": "Точное название машины", "season": "Summer/Autumn/Winter/Spring", "est_value": "20M CR"}
   ],
   "cars_40pts": [
-    {"name": "Точное название", "season": "Summer/Autumn/Winter/Spring", "est_value": "Оценка CR"}
+    {"name": "Точное название машины", "season": "Summer/Autumn/Winter/Spring", "est_value": "Оценка CR"}
   ],
-  "trading_advice": "Стратегия для сезона $calculatedSeason: кого снайпить прямо сейчас, когда продавать за 20M CR."
+  "trading_advice": "Стратегия на неделю: кого снайпить в сезон $currentSeason, максимальный buyout и когда продавать за 20M CR."
 }
 ''';
 
@@ -425,7 +432,7 @@ $rawFeedData
       if (_selectedProvider == "gemini") {
         for (int attempt = 1; attempt <= 3; attempt++) {
           if (!mounted) return;
-          setState(() => _statusMessage = "Запрос к Gemini 3.8 Flash (попытка $attempt)...");
+          setState(() => _statusMessage = "Синхронизация через Gemini (попытка $attempt)...");
 
           final apiUrl = Uri.https(
             'generativelanguage.googleapis.com',
@@ -452,21 +459,15 @@ $rawFeedData
             successfulText = jsonResult['candidates']?[0]?['content']?['parts']?[0]?['text'];
             break;
           } else if (aiRes.statusCode == 503) {
-            lastError = "Сервер Gemini временно перегружен (503). Повтор через 2 сек...";
+            lastError = "Сервер Gemini перегружен (503). Повтор...";
             await Future.delayed(const Duration(seconds: 2));
-          } else if (aiRes.statusCode == 429) {
-            lastError = "Превышен лимит запросов Gemini (429). Подождите несколько секунд.";
-            await Future.delayed(const Duration(seconds: 4));
           } else {
             lastError = "Ошибка Gemini (HTTP ${aiRes.statusCode}): ${aiRes.body}";
             break;
           }
         }
       } else if (_selectedProvider == "groq") {
-        setState(() => _statusMessage = "Поиск активной модели Groq...");
-        final activeGroqModel = await _findActiveGroqModel(currentKey);
-
-        setState(() => _statusMessage = "Анализ через Groq ($activeGroqModel)...");
+        setState(() => _statusMessage = "Синхронизация через Groq...");
         final apiUrl = Uri.https('api.groq.com', '/openai/v1/chat/completions');
 
         final aiRes = await http.post(
@@ -476,7 +477,7 @@ $rawFeedData
             "Authorization": "Bearer $currentKey"
           },
           body: jsonEncode({
-            "model": activeGroqModel,
+            "model": "llama-3.3-70b-versatile",
             "messages": [
               {"role": "user", "content": prompt}
             ],
@@ -491,7 +492,7 @@ $rawFeedData
           lastError = "Ошибка Groq (HTTP ${aiRes.statusCode}): ${aiRes.body}";
         }
       } else {
-        setState(() => _statusMessage = "Анализ через OpenRouter...");
+        setState(() => _statusMessage = "Синхронизация через OpenRouter...");
         final apiUrl = Uri.https('openrouter.ai', '/api/v1/chat/completions');
 
         final aiRes = await http.post(
@@ -524,27 +525,10 @@ $rawFeedData
       if (successfulText != null) {
         final parsed = _extractJsonSafely(successfulText);
         if (parsed != null) {
-          parsed['current_season'] = calculatedSeason;
-          await _saveAnalysisResult(parsed);
+          parsed['current_season'] = currentSeason;
+          await _persistSeasonData(parsed);
         } else {
-          final fallbackData = <String, dynamic>{
-            "current_season": calculatedSeason,
-            "series_number": "Series $seriesNumber",
-            "cars_20pts": [
-              {"name": "Ferrari F80 '25", "season": "Summer", "est_value": "20M CR"},
-              {"name": "Hyundai N Vision 74", "season": "Autumn", "est_value": "20M CR"},
-              {"name": "Porsche Mission R", "season": "Winter", "est_value": "20M CR"},
-              {"name": "Alfa Romeo Giulia GTAm", "season": "Spring", "est_value": "20M CR"},
-            ],
-            "cars_40pts": [
-              {"name": "Toyota GR Yaris", "season": "Summer", "est_value": "2.2M CR"},
-              {"name": "Subaru 22B STi", "season": "Autumn", "est_value": "1.8M CR"},
-              {"name": "McLaren Sabre '21", "season": "Winter", "est_value": "2M CR"},
-              {"name": "Koenigsegg Jesko", "season": "Spring", "est_value": "2.5M CR"},
-            ],
-            "trading_advice": successfulText.replaceAll(RegExp(r'[`*#{}]'), '').trim(),
-          };
-          await _saveAnalysisResult(fallbackData);
+          setState(() => _statusMessage = "Ошибка декодирования ответа ИИ.");
         }
       } else {
         setState(() => _statusMessage = lastError.isNotEmpty ? lastError : "Не удалось получить ответ.");
@@ -663,14 +647,14 @@ $rawFeedData
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                  : const Icon(Icons.auto_awesome, color: Colors.black, size: 20),
-              label: Text(_isAnalyzing ? "Анализирую данные..." : "Спросить ИИ о сезонах",
+                  : const Icon(Icons.sync, color: Colors.black, size: 20),
+              label: Text(_isAnalyzing ? "Синхронизация..." : "Синхронизировать сейчас",
                   style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14)),
               style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.greenAccent,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-              onPressed: _isAnalyzing ? null : _runAutoAnalysis,
+              onPressed: _isAnalyzing ? null : () => _runAutoAnalysis(isWeeklyAutoSync: false),
             ),
             if (_statusMessage.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -695,7 +679,8 @@ $rawFeedData
 
   Widget _buildStructuredView(Map<String, dynamic> data) {
     final season = data['current_season']?.toString() ?? "WINTER";
-    final series = data['series_number']?.toString() ?? "Series 39";
+    final series = data['series_number']?.toString() ?? "Series 5 (British Automotive)";
+    final seriesRewards = data['series_rewards']?.toString() ?? "";
     final advice = data['trading_advice']?.toString() ?? "";
     final List cars20 = (data['cars_20pts'] is List) ? data['cars_20pts'] : [];
     final List cars40 = (data['cars_40pts'] is List) ? data['cars_40pts'] : [];
@@ -722,8 +707,7 @@ $rawFeedData
                     Text(season.toUpperCase(),
                         style: const TextStyle(
                             color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                    if (series.isNotEmpty)
-                      Text(series, style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
+                    Text(series, style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
                   ],
                 ),
               ),
@@ -739,6 +723,30 @@ $rawFeedData
           ),
         ),
         const SizedBox(height: 14),
+
+        if (seriesRewards.isNotEmpty) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.amberAccent.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.stars, color: Colors.amberAccent, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    seriesRewards,
+                    style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
 
         if (cars20.isNotEmpty) ...[
           const Text("🏆 НАГРАДЫ 20 PTS (ОСНОВНЫЕ)",
