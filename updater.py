@@ -24,24 +24,25 @@ def main():
     print(f"Определен текущий сезон для анализа через DeepSeek: {season}")
 
     prompt = f"""
-Ты — финансовый аналитик аукциона Forza Horizon 6. 
-Сейчас в игре активен сезон: {season}.
-Верни СТРОГО валидный JSON без markdown-разметки (без ```json), содержащий актуальные данные для этого сезона:
+Ты — финансовый аналитик и эксперт по игре Forza Horizon 6. 
+Сейчас в игре активен сезон: {season}. 
+Учти актуальную игровую тематику текущей серии обновлений (например, серии в стиле тематических недель типа Британского автопрома).
+Верни СТРОГО валидный JSON без markdown-разметки (без ```json), содержащий актуальные официальные данные для этого сезона:
 {{
   "current_season": "{season}",
-  "series_number": "Series Update",
-  "series_rewards": "Награды за 80 PTS и 160 PTS",
+  "series_number": "Официальное название текущей серии (например, Series с тематикой обновлений)",
+  "series_rewards": "Официальные награды за 80 PTS и 160 PTS для этой серии",
   "cars_20pts": [
-    {{"name": "Точное название машины", "season": "{season}", "est_value": "20M CR"}}
+    {{"name": "Точное официальное название машины", "season": "{season}", "est_value": "20M CR"}}
   ],
   "cars_40pts": [
-    {{"name": "Точное название машины", "season": "{season}", "est_value": "Оценка CR"}}
+    {{"name": "Точное официальное название машины", "season": "{season}", "est_value": "Оценка CR"}}
   ],
   "trading_advice": "Стратегия на сезон {season}: кого снайпить, максимальный buyout и когда продавать за 20M CR."
 }}
 """
 
-    url = "https://api.deepseek.com/chat/completions"
+    url = "[https://api.deepseek.com/chat/completions](https://api.deepseek.com/chat/completions)"
     
     payload = {
         "model": "deepseek-chat",
@@ -72,7 +73,7 @@ def main():
             with open("playlist.json", "w", encoding="utf-8") as f:
                 json.dump(parsed_json, f, ensure_ascii=False, indent=4)
             
-            print("Файл playlist.json успешно обновлен через DeepSeek API!")
+            print("Файл playlist.json успешно обновлен с учетом официальной серии через DeepSeek API!")
 
     except urllib.error.HTTPError as e:
         print(f"Ошибка HTTP при запросе к DeepSeek: {e.code} - {e.read().decode('utf-8')}")
