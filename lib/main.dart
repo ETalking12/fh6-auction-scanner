@@ -163,7 +163,7 @@ class SmartAdvisorTab extends StatefulWidget {
 class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   final TextEditingController _keyController = TextEditingController();
 
-  String _selectedProvider = "openrouter";
+  String _selectedProvider = "gemini";
   String _geminiKey = "";
   String _groqKey = "";
   String _openRouterKey = "";
@@ -187,7 +187,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
 
   Future<void> _loadState() async {
     final prefs = await SharedPreferences.getInstance();
-    final provider = prefs.getString("ai_provider_selection") ?? "openrouter";
+    final provider = prefs.getString("ai_provider_selection") ?? "gemini";
     final gKey = (prefs.getString("gemini_user_api_key") ?? "").trim();
     final rKey = (prefs.getString("groq_user_api_key") ?? "").trim();
     final oKey = (prefs.getString("openrouter_user_api_key") ?? "").trim();
@@ -309,6 +309,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       return feedJson["current_season"].toString().trim();
     }
 
+    // Референсный старт сезона (10 сентября 2026, 14:30 UTC = Series 39 Summer)
     final anchor = DateTime.utc(2026, 9, 10, 14, 30);
     final now = DateTime.now().toUtc();
     final diffMs = now.difference(anchor).inMilliseconds;
@@ -331,6 +332,34 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       default:
         return "Summer";
     }
+  }
+
+  Future<String> _findActiveGroqModel(String apiKey) async {
+    try {
+      final uri = Uri.https('api.groq.com', '/openai/v1/models');
+      final res = await http.get(
+        uri,
+        headers: {
+          "Authorization": "Bearer $apiKey",
+          "Content-Type": "application/json"
+        },
+      ).timeout(const Duration(seconds: 8));
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final List models = data['data'] ?? [];
+        for (var m in models) {
+          final String id = m['id'] ?? '';
+          if (id.contains('llama-3.3-70b') || id.contains('versatile') || id.contains('llama-3.2') || id.contains('llama3-70b')) {
+            return id;
+          }
+        }
+        if (models.isNotEmpty) {
+          return models.first['id']?.toString() ?? 'llama-3.3-70b-versatile';
+        }
+      }
+    } catch (_) {}
+    return 'llama-3.3-70b-versatile';
   }
 
   Map<String, dynamic>? _extractJsonSafely(String rawText) {
@@ -393,8 +422,76 @@ $rawFeedData
       String? successfulText;
       String lastError = "";
 
-      if (_selectedProvider == "openrouter") {
-        setState(() => _statusMessage = "Анализ через OpenRouter (Llama 3.3 Free)...");
+      if (_selectedProvider == "gemini") {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+          if (!mounted) return;
+          setState(() => _statusMessage = "Запрос к Gemini 3.8 Flash (попытка $attempt)...");
+
+          final apiUrl = Uri.https(
+            'generativelanguage.googleapis.com',
+            '/v1beta/models/gemini-3.8-flash:generateContent',
+            {'key': currentKey},
+          );
+
+          final aiRes = await http.post(
+            apiUrl,
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode({
+              "contents": [
+                {
+                  "parts": [
+                    {"text": prompt}
+                  ]
+                }
+              ]
+            }),
+          ).timeout(const Duration(seconds: 30));
+
+          if (aiRes.statusCode == 200) {
+            final jsonResult = jsonDecode(aiRes.body);
+            successfulText = jsonResult['candidates']?[0]?['content']?['parts']?[0]?['text'];
+            break;
+          } else if (aiRes.statusCode == 503) {
+            lastError = "Сервер Gemini временно перегружен (503). Повтор через 2 сек...";
+            await Future.delayed(const Duration(seconds: 2));
+          } else if (aiRes.statusCode == 429) {
+            lastError = "Превышен лимит запросов Gemini (429). Подождите несколько секунд.";
+            await Future.delayed(const Duration(seconds: 4));
+          } else {
+            lastError = "Ошибка Gemini (HTTP ${aiRes.statusCode}): ${aiRes.body}";
+            break;
+          }
+        }
+      } else if (_selectedProvider == "groq") {
+        setState(() => _statusMessage = "Поиск активной модели Groq...");
+        final activeGroqModel = await _findActiveGroqModel(currentKey);
+
+        setState(() => _statusMessage = "Анализ через Groq ($activeGroqModel)...");
+        final apiUrl = Uri.https('api.groq.com', '/openai/v1/chat/completions');
+
+        final aiRes = await http.post(
+          apiUrl,
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer $currentKey"
+          },
+          body: jsonEncode({
+            "model": activeGroqModel,
+            "messages": [
+              {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.1
+          }),
+        ).timeout(const Duration(seconds: 30));
+
+        if (aiRes.statusCode == 200) {
+          final jsonResult = jsonDecode(aiRes.body);
+          successfulText = jsonResult['choices']?[0]?['message']?['content'];
+        } else {
+          lastError = "Ошибка Groq (HTTP ${aiRes.statusCode}): ${aiRes.body}";
+        }
+      } else {
+        setState(() => _statusMessage = "Анализ через OpenRouter...");
         final apiUrl = Uri.https('openrouter.ai', '/api/v1/chat/completions');
 
         final aiRes = await http.post(
@@ -419,76 +516,6 @@ $rawFeedData
           successfulText = jsonResult['choices']?[0]?['message']?['content'];
         } else {
           lastError = "Ошибка OpenRouter (HTTP ${aiRes.statusCode}): ${aiRes.body}";
-        }
-      } else if (_selectedProvider == "gemini") {
-        final geminiModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
-
-        for (final modelName in geminiModels) {
-          for (int attempt = 1; attempt <= 2; attempt++) {
-            if (!mounted) return;
-            setState(() => _statusMessage = "Запрос к Gemini ($modelName)...");
-
-            final apiUrl = Uri.https(
-              'generativelanguage.googleapis.com',
-              '/v1beta/models/$modelName:generateContent',
-              {'key': currentKey},
-            );
-
-            final aiRes = await http.post(
-              apiUrl,
-              headers: {"Content-Type": "application/json"},
-              body: jsonEncode({
-                "contents": [
-                  {
-                    "parts": [
-                      {"text": prompt}
-                    ]
-                  }
-                ]
-              }),
-            ).timeout(const Duration(seconds: 30));
-
-            if (aiRes.statusCode == 200) {
-              final jsonResult = jsonDecode(aiRes.body);
-              successfulText = jsonResult['candidates']?[0]?['content']?['parts']?[0]?['text'];
-              break;
-            } else if (aiRes.statusCode == 503) {
-              lastError = "Сервер Gemini перегружен (503). Повтор...";
-              await Future.delayed(const Duration(seconds: 2));
-            } else if (aiRes.statusCode == 429) {
-              lastError = "Квота Gemini исчерпана (429). Подождите 15 секунд.";
-              await Future.delayed(const Duration(seconds: 3));
-            } else {
-              lastError = "Ошибка Gemini (HTTP ${aiRes.statusCode}): ${aiRes.body}";
-              break;
-            }
-          }
-          if (successfulText != null) break;
-        }
-      } else {
-        setState(() => _statusMessage = "Анализ через Groq...");
-        final apiUrl = Uri.https('api.groq.com', '/openai/v1/chat/completions');
-
-        final aiRes = await http.post(
-          apiUrl,
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer $currentKey"
-          },
-          body: jsonEncode({
-            "model": "llama-3.1-8b-instant",
-            "messages": [
-              {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.1
-          }),
-        ).timeout(const Duration(seconds: 30));
-
-        if (aiRes.statusCode == 200) {
-          final jsonResult = jsonDecode(aiRes.body);
-          successfulText = jsonResult['choices']?[0]?['message']?['content'];
-        } else {
-          lastError = "Ошибка Groq (HTTP ${aiRes.statusCode}): ${aiRes.body}";
         }
       }
 
@@ -561,17 +588,6 @@ $rawFeedData
                   const Text("ИИ:", style: TextStyle(color: Colors.white54, fontSize: 12)),
                   const SizedBox(width: 8),
                   ChoiceChip(
-                    label: const Text("OpenRouter (Free)", style: TextStyle(fontSize: 11)),
-                    selected: _selectedProvider == "openrouter",
-                    selectedColor: Colors.greenAccent,
-                    backgroundColor: const Color(0xFF1E1E1E),
-                    labelStyle: TextStyle(
-                        color: _selectedProvider == "openrouter" ? Colors.black : Colors.white,
-                        fontWeight: FontWeight.bold),
-                    onSelected: (val) => _switchProvider("openrouter"),
-                  ),
-                  const SizedBox(width: 6),
-                  ChoiceChip(
                     label: const Text("Gemini", style: TextStyle(fontSize: 11)),
                     selected: _selectedProvider == "gemini",
                     selectedColor: Colors.greenAccent,
@@ -592,6 +608,17 @@ $rawFeedData
                         fontWeight: FontWeight.bold),
                     onSelected: (val) => _switchProvider("groq"),
                   ),
+                  const SizedBox(width: 6),
+                  ChoiceChip(
+                    label: const Text("OpenRouter (Free)", style: TextStyle(fontSize: 11)),
+                    selected: _selectedProvider == "openrouter",
+                    selectedColor: Colors.greenAccent,
+                    backgroundColor: const Color(0xFF1E1E1E),
+                    labelStyle: TextStyle(
+                        color: _selectedProvider == "openrouter" ? Colors.black : Colors.white,
+                        fontWeight: FontWeight.bold),
+                    onSelected: (val) => _switchProvider("openrouter"),
+                  ),
                 ],
               ),
             ),
@@ -604,11 +631,11 @@ $rawFeedData
                     obscureText: true,
                     style: const TextStyle(color: Colors.white, fontSize: 13),
                     decoration: InputDecoration(
-                      hintText: _selectedProvider == "openrouter"
-                          ? "Ключ OpenRouter (sk-or-v1-...)"
-                          : (_selectedProvider == "gemini"
-                              ? "Ключ Gemini (AIzaSy...)"
-                              : "Ключ Groq (gsk_...)"),
+                      hintText: _selectedProvider == "gemini"
+                          ? "Ключ Gemini (AIzaSy...)"
+                          : (_selectedProvider == "groq"
+                              ? "Ключ Groq (gsk_...)"
+                              : "Ключ OpenRouter (sk-or-v1-...)"),
                       hintStyle: const TextStyle(color: Colors.white38, fontSize: 11),
                       filled: true,
                       fillColor: const Color(0xFF1E1E1E),
