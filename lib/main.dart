@@ -30,7 +30,7 @@ class WatchlistItem {
   final String name;
   final int buyPrice;
   final int targetPrice;
-  String status; // "HOLD" или "READY"
+  String status;
   final String dateAdded;
 
   WatchlistItem({
@@ -134,7 +134,7 @@ class _Forza6SniperAppState extends State<Forza6SniperApp> {
 }
 
 // =======================================================
-// 1. АВТОМАТИЧЕСКИЙ СЕЗОННЫЙ СОВЕТНИК + ТАЙМЕР + ДЕТАЛИ С ФОТО
+// 1. АВТОМАТИЧЕСКИЙ СЕЗОННЫЙ СОВЕТНИК
 // =======================================================
 class StrategyAdvisorTab extends StatefulWidget {
   const StrategyAdvisorTab({super.key});
@@ -488,7 +488,7 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
 }
 
 // ==========================================
-// 2. СКАНЕР АУКЦИОНА С УЧЕТОМ НАЛОГА
+// 2. УЛУЧШЕННЫЙ СКАНЕР АУКЦИОНА С ВИДИМЫМ ЛОГОМ И ШИРОКОЙ РАМКОЙ
 // ==========================================
 class ScannerTab extends StatefulWidget {
   final Function(String name, int price) onAddToPortfolio;
@@ -502,11 +502,11 @@ class _ScannerTabState extends State<ScannerTab> {
   bool _isProcessing = false;
   bool _isScanning = false;
   final String _currentSlot = "Слот 1 (Авто)";
-  final Map<String, List<int>> _observedHistory = {};
-  final Map<String, int> _learnedMedians = {};
-  int _detectedPrice = 0, _lastNetProfit = 0;
+  
+  int _detectedPrice = 0;
   bool _isSnipeAlert = false;
-  String _statusBanner = "Листайте лоты для калибровки нормы";
+  String _lastRawText = "Ожидание сканирования...";
+  String _statusBanner = "Наведите рамку на цены выкупа";
 
   @override
   void initState() {
@@ -530,7 +530,7 @@ class _ScannerTabState extends State<ScannerTab> {
       if (_controller != null && _controller!.value.isInitialized && !_isProcessing) {
         await _captureAndAnalyze();
       }
-      await Future.delayed(const Duration(milliseconds: 1200));
+      await Future.delayed(const Duration(milliseconds: 900));
     }
   }
 
@@ -540,18 +540,26 @@ class _ScannerTabState extends State<ScannerTab> {
     try {
       final photo = await _controller!.takePicture();
       
-      // Распознаем текст с акцентом на цифры
+      // Распознаем текст с экрана
       final text = await FlutterTesseractOcr.extractText(
         photo.path,
         language: 'eng',
         args: {"tessedit_char_whitelist": "0123456789,CR "}
       );
 
-      // Очищаем от лишних символов, оставляя только цифры
+      if (mounted) {
+        setState(() {
+          _lastRawText = text.trim().replaceAll('\n', ' ');
+          if (_lastRawText.length > 35) {
+            _lastRawText = "${_lastRawText.substring(0, 35)}...";
+          }
+        });
+      }
+
+      // Очищаем от мусора, ищем миллионные цены (от 6 до 8 цифр)
       final cleanText = text.replaceAll(RegExp(r'[^0-9]'), '');
-      
-      // Ищем числа длиной от 6 до 8 знаков (миллионные цены лотов)
       final match = RegExp(r'\d{6,8}').firstMatch(cleanText);
+      
       if (match != null) {
         int foundPrice = int.parse(match.group(0)!);
         _processPrice(foundPrice);
@@ -564,33 +572,18 @@ class _ScannerTabState extends State<ScannerTab> {
   }
 
   void _processPrice(int price) {
-    if (price < 10000 || !mounted) return;
-    _observedHistory.putIfAbsent(_currentSlot, () => []).add(price);
-    if (_observedHistory[_currentSlot]!.length > 20) _observedHistory[_currentSlot]!.removeAt(0);
-
-    if (_observedHistory[_currentSlot]!.length >= 5) {
-      final sorted = List<int>.from(_observedHistory[_currentSlot]!)..sort();
-      _learnedMedians[_currentSlot] = sorted[sorted.length ~/ 2];
-    }
+    if (price < 100000 || !mounted) return; // Фильтруем мелкие числа
 
     setState(() {
       _detectedPrice = price;
-      if (_learnedMedians[_currentSlot] == null) {
-        _isSnipeAlert = false;
-        _statusBanner = "Сбор: ${_observedHistory[_currentSlot]!.length}/5 лотов...";
+      // Если цена выкупа ниже 6 миллионов (отличный снайп для дорогих машин)
+      if (price <= 6000000) {
+        _isSnipeAlert = true;
+        _statusBanner = "🔥 СНАЙП! Найдена низкая цена: $price CR";
+        HapticFeedback.heavyImpact();
       } else {
-        final median = _learnedMedians[_currentSlot]!;
-        _lastNetProfit = (median * 0.85).round() - price;
-        final discount = ((median - price) / median * 100).round();
-        
-        if (discount >= 20 && _lastNetProfit > 150000) {
-          _isSnipeAlert = true;
-          _statusBanner = "🔥 СНАЙП! Чистый доход: +${_lastNetProfit} CR";
-          HapticFeedback.heavyImpact();
-        } else {
-          _isSnipeAlert = false;
-          _statusBanner = "Норма (~$median CR). Чистый: +$_lastNetProfit CR";
-        }
+        _isSnipeAlert = false;
+        _statusBanner = "Цена: $price CR (Обычная)";
       }
     });
   }
@@ -619,38 +612,57 @@ class _ScannerTabState extends State<ScannerTab> {
       body: Stack(
         children: [
           Positioned.fill(child: CameraPreview(_controller!)),
-          // Индикаторная рамка: меняет цвет на ярко-зеленый при нахождении выгодного лота
+          
+          // Увеличенная рамка сканирования для удобного захвата строк цен
           Center(
             child: Container(
-              width: 290, height: 100,
+              width: 330, height: 130,
               decoration: BoxDecoration(
                   border: Border.all(
-                    color: _isSnipeAlert ? Colors.greenAccent : Colors.white60,
-                    width: _isSnipeAlert ? 3.5 : 2.0,
+                    color: _isSnipeAlert ? Colors.greenAccent : Colors.white70,
+                    width: _isSnipeAlert ? 4.0 : 2.5,
                   ),
                   boxShadow: _isSnipeAlert
-                      ? [BoxShadow(color: Colors.greenAccent.withOpacity(0.5), blurRadius: 10, spreadRadius: 2)]
+                      ? [BoxShadow(color: Colors.greenAccent.withOpacity(0.6), blurRadius: 12, spreadRadius: 3)]
                       : [],
                   borderRadius: BorderRadius.circular(12)),
             ),
           ),
+          
+          // Нижняя панель с отладкой и статусом
           Positioned(
             bottom: 20, left: 16, right: 16,
             child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.black87,
+                color: Colors.black.withOpacity(0.9),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.transparent),
+                border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white24, width: 1.5),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Индикатор работы OCR (показывает что видит камера)
+                  Row(
+                    children: [
+                      const Icon(Icons.remove_red_eye, color: Colors.greenAccent, size: 14),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          "OCR видит: $_lastRawText",
+                          style: const TextStyle(color: Colors.white60, fontSize: 11),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(color: Colors.white24, height: 14),
                   Text(
                     _statusBanner,
                     style: TextStyle(
                       color: _isSnipeAlert ? Colors.greenAccent : Colors.white,
-                      fontWeight: _isSnipeAlert ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
                     ),
                   ),
                   if (_detectedPrice > 0) ...[
@@ -658,7 +670,7 @@ class _ScannerTabState extends State<ScannerTab> {
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent),
                       onPressed: () => widget.onAddToPortfolio(_currentSlot, _detectedPrice),
-                      child: const Text("СОХРАНИТЬ В РАДАР", style: TextStyle(color: Colors.black)),
+                      child: const Text("СОХРАНИТЬ В РАДАР", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
                     )
                   ]
                 ],
@@ -672,7 +684,7 @@ class _ScannerTabState extends State<ScannerTab> {
 }
 
 // ==========================================
-// 3. РАДАР (ПОРТФЕЛЬ С ПЕРЕКЛЮЧЕНИЕМ СТАТУСОВ)
+// 3. РАДАР (ПОРТФЕЛЬ)
 // ==========================================
 class WatchlistTab extends StatefulWidget {
   final List<WatchlistItem> portfolio;
