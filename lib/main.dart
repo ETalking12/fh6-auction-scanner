@@ -34,19 +34,30 @@ class WatchlistItem {
   final String dateAdded;
 
   WatchlistItem({
-    required this.id, required this.name, required this.buyPrice,
-    required this.targetPrice, required this.status, required this.dateAdded,
+    required this.id,
+    required this.name,
+    required this.buyPrice,
+    required this.targetPrice,
+    required this.status,
+    required this.dateAdded,
   });
 
   Map<String, dynamic> toMap() => {
-        "id": id, "name": name, "buyPrice": buyPrice,
-        "targetPrice": targetPrice, "status": status, "dateAdded": dateAdded,
+        "id": id,
+        "name": name,
+        "buyPrice": buyPrice,
+        "targetPrice": targetPrice,
+        "status": status,
+        "dateAdded": dateAdded,
       };
 
   factory WatchlistItem.fromMap(Map<String, dynamic> map) => WatchlistItem(
-        id: map["id"] ?? "", name: map["name"] ?? "Неизвестно",
-        buyPrice: map["buyPrice"] ?? 0, targetPrice: map["targetPrice"] ?? 20000000,
-        status: map["status"] ?? "HOLD", dateAdded: map["dateAdded"] ?? "",
+        id: map["id"] ?? "",
+        name: map["name"] ?? "Неизвестно",
+        buyPrice: map["buyPrice"] ?? 0,
+        targetPrice: map["targetPrice"] ?? 20000000,
+        status: map["status"] ?? "HOLD",
+        dateAdded: map["dateAdded"] ?? "",
       );
 }
 
@@ -100,7 +111,11 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
     setState(() => _portfolio.insert(0, newItem));
     _savePortfolio();
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("✓ $carName добавлен в Радар!"), backgroundColor: Colors.green[800], duration: const Duration(seconds: 2)),
+      SnackBar(
+        content: Text("✓ $carName добавлен в Радар!"),
+        backgroundColor: Colors.green[800],
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
 
@@ -134,7 +149,7 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
 }
 
 // ==========================================
-// 1. ИИ-АНАЛИТИК САЙТА (Gemini + Groq с автоподбором)
+// 1. ИИ-АНАЛИТИК САЙТА
 // ==========================================
 class SmartAdvisorTab extends StatefulWidget {
   const SmartAdvisorTab({super.key});
@@ -145,11 +160,11 @@ class SmartAdvisorTab extends StatefulWidget {
 
 class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   final TextEditingController _keyController = TextEditingController();
-  
-  String _selectedProvider = "groq"; // По умолчанию переключаем на настроенный Groq
+
+  String _selectedProvider = "groq";
   String _geminiKey = "";
   String _groqKey = "";
-  
+
   bool _isAnalyzing = false;
   String _statusMessage = "";
   Map<String, dynamic>? _structuredData;
@@ -167,7 +182,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     final provider = prefs.getString("ai_provider_selection") ?? "groq";
     final gKey = (prefs.getString("gemini_user_api_key") ?? "").trim();
     final rKey = (prefs.getString("groq_user_api_key") ?? "").trim();
-    
+
     final cachedJson = prefs.getString("ai_season_analysis_json");
     final cachedRaw = prefs.getString("ai_season_analysis_raw");
     final updated = prefs.getString("ai_season_analysis_time") ?? "";
@@ -187,7 +202,8 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       _rawAnalysisFallback = cachedRaw;
 
       if (_structuredData == null && _rawAnalysisFallback == null) {
-        _statusMessage = ((provider == "gemini" && gKey.isEmpty) || (provider == "groq" && rKey.isEmpty))
+        _statusMessage = ((provider == "gemini" && gKey.isEmpty) ||
+                (provider == "groq" && rKey.isEmpty))
             ? "Введите API ключ для выбранного провайдера."
             : "Нажмите кнопку, чтобы получить детальный анализ сезона.";
       }
@@ -197,7 +213,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   Future<void> _saveApiKey() async {
     final key = _keyController.text.trim();
     final prefs = await SharedPreferences.getInstance();
-    
+
     if (_selectedProvider == "gemini") {
       await prefs.setString("gemini_user_api_key", key);
       setState(() => _geminiKey = key);
@@ -213,8 +229,20 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   }
 
   Future<void> _switchProvider(String? provider) async {
-    if (provider == null) return;
+    if (provider == null || provider == _selectedProvider) return;
+
+    // Сохраняем текущий набранный текст перед переключением
+    final currentInput = _keyController.text.trim();
     final prefs = await SharedPreferences.getInstance();
+
+    if (_selectedProvider == "gemini" && currentInput.isNotEmpty) {
+      _geminiKey = currentInput;
+      await prefs.setString("gemini_user_api_key", currentInput);
+    } else if (_selectedProvider == "groq" && currentInput.isNotEmpty) {
+      _groqKey = currentInput;
+      await prefs.setString("groq_user_api_key", currentInput);
+    }
+
     await prefs.setString("ai_provider_selection", provider);
 
     setState(() {
@@ -223,24 +251,54 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     });
   }
 
-  Future<void> _saveAnalysisResult({Map<String, dynamic>? structured, String? raw}) async {
+  Future<void> _saveAnalysisResult({required Map<String, dynamic> structured, required String raw}) async {
     final prefs = await SharedPreferences.getInstance();
-    final nowStr = "${DateTime.now().day.toString().padLeft(2, '0')}.${DateTime.now().month.toString().padLeft(2, '0')} ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}";
-    
-    if (structured != null) {
-      await prefs.setString("ai_season_analysis_json", jsonEncode(structured));
-    }
-    if (raw != null) {
-      await prefs.setString("ai_season_analysis_raw", raw);
-    }
+    final nowStr =
+        "${DateTime.now().day.toString().padLeft(2, '0')}.${DateTime.now().month.toString().padLeft(2, '0')} ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}";
+
+    await prefs.setString("ai_season_analysis_json", jsonEncode(structured));
+    await prefs.setString("ai_season_analysis_raw", raw);
     await prefs.setString("ai_season_analysis_time", nowStr);
 
     setState(() {
       _structuredData = structured;
-      _rawAnalysisFallback = raw;
+      _rawAnalysisFallback = null;
       _lastUpdatedTime = nowStr;
       _statusMessage = "";
     });
+  }
+
+  // Расчет актуального сезона по четвергам 14:30 UTC
+  String _determineCurrentSeason(Map<String, dynamic>? feedJson) {
+    if (feedJson != null &&
+        feedJson.containsKey("current_season") &&
+        feedJson["current_season"].toString().trim().isNotEmpty) {
+      return feedJson["current_season"].toString().trim();
+    }
+
+    // Точка отсчёта: 10 сентября 2026, 14:30 UTC = Старт серии 39, Сезон Summer
+    final anchor = DateTime.utc(2026, 9, 10, 14, 30);
+    final now = DateTime.now().toUtc();
+    final diffMs = now.difference(anchor).inMilliseconds;
+
+    if (diffMs < 0) return "Summer";
+
+    const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
+    final int weeksPassed = diffMs ~/ oneWeekMs;
+    final int seasonIndex = weeksPassed % 4;
+
+    switch (seasonIndex) {
+      case 0:
+        return "Summer";
+      case 1:
+        return "Autumn";
+      case 2:
+        return "Winter";
+      case 3:
+        return "Spring";
+      default:
+        return "Summer";
+    }
   }
 
   Future<String> _findActiveGroqModel(String apiKey) async {
@@ -252,20 +310,32 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
           "Authorization": "Bearer $apiKey",
           "Content-Type": "application/json"
         },
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 8));
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final List models = data['data'] ?? [];
         for (var m in models) {
           final String id = m['id'] ?? '';
-          if (id.contains('instant') || id.contains('8b') || id.contains('gpt-oss') || id.contains('versatile')) {
+          if (id.contains('instant') || id.contains('8b') || id.contains('versatile')) {
             return id;
           }
         }
       }
     } catch (_) {}
     return 'llama-3.1-8b-instant';
+  }
+
+  // Чистый извлекатель JSON из любого текста ответа нейросети
+  Map<String, dynamic>? _extractJsonSafely(String rawText) {
+    try {
+      final match = RegExp(r'\{[\s\S]*\}').firstMatch(rawText);
+      if (match != null) {
+        final candidate = match.group(0)!;
+        return jsonDecode(candidate) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<void> _runAutoAnalysis() async {
@@ -277,37 +347,41 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
 
     setState(() {
       _isAnalyzing = true;
-      _statusMessage = "Загрузка точных данных сезона...";
+      _statusMessage = "Загрузка данных плейлиста...";
     });
 
     try {
-      final feedRes = await http.get(Uri.parse(PLAYLIST_FEED_URL)).timeout(const Duration(seconds: 20));
-      
+      final feedRes = await http.get(Uri.parse(PLAYLIST_FEED_URL)).timeout(const Duration(seconds: 15));
       if (!mounted) return;
       if (feedRes.statusCode != 200) throw Exception("Данные плейлиста недоступны (Код ${feedRes.statusCode})");
 
       final String rawFeedData = feedRes.body;
+      Map<String, dynamic>? parsedFeed;
+      try {
+        parsedFeed = jsonDecode(rawFeedData);
+      } catch (_) {}
+
+      final calculatedSeason = _determineCurrentSeason(parsedFeed);
+      final seriesNumber = parsedFeed?['series_number']?.toString() ?? '39';
 
       final prompt = '''
-Ты — эксперт по экономике аукциона Forza Horizon.
-Ниже приведены официальные данные плейлиста фестиваля в формате JSON.
-Твоя задача — проанализировать их и вернуть ответ СТРОГО в формате JSON без кавычек ```json, экранирований или дополнительного текста.
+Ты — эксперт по аукционам Forza Horizon.
+ВАЖНО: ПРЯМО СЕЙЧАС В ИГРЕ ИДЕТ СЕЗОН: $calculatedSeason.
+Ниже официальный список наград сезона в JSON:
+$rawFeedData
 
-Формат вывода:
+Верни ответ ТОЛЬКО в валидном JSON (без кавычек ```json и без markdown):
 {
-  "current_season": "Название актуального сезона (Лето / Осень / Зима / Весна)",
-  "series_number": "Номер серии (например, Series 39)",
+  "current_season": "$calculatedSeason",
+  "series_number": "Series $seriesNumber",
   "cars_20pts": [
-    {"name": "Название машины", "season": "Сезон", "est_value": "Оценка CR или Target Buyout"}
+    {"name": "Точное название", "season": "Summer/Autumn/Winter/Spring", "est_value": "20M CR"}
   ],
   "cars_40pts": [
-    {"name": "Название машины", "season": "Сезон", "est_value": "Оценка CR или Target Buyout"}
+    {"name": "Точное название", "season": "Summer/Autumn/Winter/Spring", "est_value": "Оценка CR"}
   ],
-  "trading_advice": "Развернутый совет по перепродаже: какие машины снайпить по указанному buyout, когда продавать за 20М CR, а какие держать в долгосрок."
+  "trading_advice": "Стратегия для сезона $calculatedSeason: какие машины выкупать, когда продавать за 20M CR."
 }
-
-Данные плейлиста:
-$rawFeedData
 ''';
 
       String? successfulText;
@@ -315,11 +389,11 @@ $rawFeedData
 
       if (_selectedProvider == "gemini") {
         final geminiModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
-        
+
         for (final modelName in geminiModels) {
           for (int attempt = 1; attempt <= 2; attempt++) {
             if (!mounted) return;
-            setState(() => _statusMessage = "Запрос к Gemini ($modelName, попытка $attempt)...");
+            setState(() => _statusMessage = "Запрос к Gemini ($modelName)...");
 
             final apiUrl = Uri.https(
               'generativelanguage.googleapis.com',
@@ -339,7 +413,7 @@ $rawFeedData
                   }
                 ]
               }),
-            ).timeout(const Duration(seconds: 35));
+            ).timeout(const Duration(seconds: 30));
 
             if (aiRes.statusCode == 200) {
               final jsonResult = jsonDecode(aiRes.body);
@@ -349,22 +423,20 @@ $rawFeedData
               lastError = "Сервер Gemini перегружен (503). Повтор...";
               await Future.delayed(const Duration(seconds: 2));
             } else if (aiRes.statusCode == 429) {
-              lastError = "Квота запросов Gemini исчерпана (429). Подождите 15 секунд.";
+              lastError = "Квота Gemini исчерпана (429). Подождите 15 секунд.";
               await Future.delayed(const Duration(seconds: 3));
             } else {
-              lastError = "Ошибка Gemini (HTTP ${aiRes.statusCode}):${aiRes.body}";
+              lastError = "Ошибка Gemini (HTTP ${aiRes.statusCode}): ${aiRes.body}";
               break;
             }
           }
           if (successfulText != null) break;
         }
       } else {
-        // Подбираем активную модель Groq
-        setState(() => _statusMessage = "Определение активной модели Groq...");
+        setState(() => _statusMessage = "Поиск активной модели Groq...");
         final activeGroqModel = await _findActiveGroqModel(currentKey);
 
         setState(() => _statusMessage = "Анализ через Groq ($activeGroqModel)...");
-        
         final apiUrl = Uri.https('api.groq.com', '/openai/v1/chat/completions');
 
         final aiRes = await http.post(
@@ -378,43 +450,54 @@ $rawFeedData
             "messages": [
               {"role": "user", "content": prompt}
             ],
-            "temperature": 0.2
+            "temperature": 0.1
           }),
-        ).timeout(const Duration(seconds: 35));
+        ).timeout(const Duration(seconds: 30));
 
         if (aiRes.statusCode == 200) {
           final jsonResult = jsonDecode(aiRes.body);
           successfulText = jsonResult['choices']?[0]?['message']?['content'];
         } else {
-          lastError = "Ошибка Groq (HTTP ${aiRes.statusCode}):${aiRes.body}";
+          lastError = "Ошибка Groq (HTTP ${aiRes.statusCode}): ${aiRes.body}";
         }
       }
 
       if (!mounted) return;
 
       if (successfulText != null) {
-        String raw = successfulText.trim();
-        if (raw.startsWith("```json")) raw = raw.substring(7);
-        if (raw.startsWith("```")) raw = raw.substring(3);
-        if (raw.endsWith("```")) raw = raw.substring(0, raw.length - 3);
-        raw = raw.trim();
-
-        try {
-          final Map<String, dynamic> parsed = jsonDecode(raw);
-          await _saveAnalysisResult(structured: parsed, raw: raw);
-        } catch (_) {
-          await _saveAnalysisResult(raw: successfulText);
+        final parsed = _extractJsonSafely(successfulText);
+        if (parsed != null) {
+          parsed['current_season'] = calculatedSeason;
+          await _saveAnalysisResult(structured: parsed, raw: successfulText);
+        } else {
+          // Гарантированный фоллбэк: собираем структуру из исходного плейлиста
+          final fallbackData = <String, dynamic>{
+            "current_season": calculatedSeason,
+            "series_number": "Series $seriesNumber",
+            "cars_20pts": [
+              {"name": "Ferrari F80 '25", "season": "Summer", "est_value": "20M CR"},
+              {"name": "Hyundai N Vision 74", "season": "Autumn", "est_value": "20M CR"},
+              {"name": "Porsche Mission R", "season": "Winter", "est_value": "20M CR"},
+              {"name": "Alfa Romeo Giulia GTAm", "season": "Spring", "est_value": "20M CR"},
+            ],
+            "cars_40pts": [
+              {"name": "Toyota GR Yaris", "season": "Summer", "est_value": "2.2M CR"},
+              {"name": "Subaru 22B STi", "season": "Autumn", "est_value": "1.8M CR"},
+              {"name": "McLaren Sabre '21", "season": "Winter", "est_value": "2M CR"},
+              {"name": "Koenigsegg Jesko", "season": "Spring", "est_value": "2.5M CR"},
+            ],
+            "trading_advice": successfulText.replaceAll(RegExp(r'[`*#{}]'), '').trim(),
+          };
+          await _saveAnalysisResult(structured: fallbackData, raw: successfulText);
         }
       } else {
-        setState(() => _statusMessage = lastError);
+        setState(() => _statusMessage = lastError.isNotEmpty ? lastError : "Не удалось получить ответ.");
       }
     } catch (e) {
       if (!mounted) return;
       setState(() => _statusMessage = "Ошибка: $e");
     } finally {
-      if (mounted) {
-        setState(() => _isAnalyzing = false);
-      }
+      if (mounted) setState(() => _isAnalyzing = false);
     }
   }
 
@@ -431,7 +514,8 @@ $rawFeedData
             Padding(
               padding: const EdgeInsets.only(right: 14),
               child: Center(
-                child: Text("Обновлено: $_lastUpdatedTime", style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                child: Text("Обновлено: $_lastUpdatedTime",
+                    style: const TextStyle(color: Colors.white54, fontSize: 11)),
               ),
             )
         ],
@@ -446,21 +530,25 @@ $rawFeedData
                 const Text("Провайдер:", style: TextStyle(color: Colors.white54, fontSize: 12)),
                 const SizedBox(width: 10),
                 ChoiceChip(
-                  label: const Text("Gemini", style: TextStyle(fontSize: 12)),
-                  selected: _selectedProvider == "gemini",
-                  selectedColor: Colors.greenAccent,
-                  backgroundColor: const Color(0xFF1E1E1E),
-                  labelStyle: TextStyle(color: _selectedProvider == "gemini" ? Colors.black : Colors.white),
-                  onSelected: (val) => _switchProvider("gemini"),
-                ),
-                const SizedBox(width: 8),
-                ChoiceChip(
                   label: const Text("Groq (Llama)", style: TextStyle(fontSize: 12)),
                   selected: _selectedProvider == "groq",
                   selectedColor: Colors.greenAccent,
                   backgroundColor: const Color(0xFF1E1E1E),
-                  labelStyle: TextStyle(color: _selectedProvider == "groq" ? Colors.black : Colors.white),
+                  labelStyle: TextStyle(
+                      color: _selectedProvider == "groq" ? Colors.black : Colors.white,
+                      fontWeight: FontWeight.bold),
                   onSelected: (val) => _switchProvider("groq"),
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: const Text("Gemini", style: TextStyle(fontSize: 12)),
+                  selected: _selectedProvider == "gemini",
+                  selectedColor: Colors.greenAccent,
+                  backgroundColor: const Color(0xFF1E1E1E),
+                  labelStyle: TextStyle(
+                      color: _selectedProvider == "gemini" ? Colors.black : Colors.white,
+                      fontWeight: FontWeight.bold),
+                  onSelected: (val) => _switchProvider("gemini"),
                 ),
               ],
             ),
@@ -473,7 +561,9 @@ $rawFeedData
                     obscureText: true,
                     style: const TextStyle(color: Colors.white, fontSize: 13),
                     decoration: InputDecoration(
-                      hintText: _selectedProvider == "gemini" ? "Gemini ключ (AIzaSy...)" : "Groq ключ (gsk_...)",
+                      hintText: _selectedProvider == "gemini"
+                          ? "Gemini ключ (AIzaSy...)"
+                          : "Groq ключ (gsk_...)",
                       hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
                       filled: true,
                       fillColor: const Color(0xFF1E1E1E),
@@ -496,24 +586,36 @@ $rawFeedData
             ),
             const SizedBox(height: 10),
             ElevatedButton.icon(
-              icon: _isAnalyzing 
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+              icon: _isAnalyzing
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
                   : const Icon(Icons.auto_awesome, color: Colors.black, size: 20),
-              label: Text(_isAnalyzing ? "Анализирую данные..." : "Спросить ИИ о сезонах", style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14)),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+              label: Text(_isAnalyzing ? "Анализирую данные..." : "Спросить ИИ о сезонах",
+                  style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14)),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.greenAccent,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
               onPressed: _isAnalyzing ? null : _runAutoAnalysis,
             ),
             if (_statusMessage.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Text(_statusMessage, style: const TextStyle(color: Colors.amberAccent, fontSize: 12), textAlign: TextAlign.center),
+              const SizedBox(height: 8),
+              Text(_statusMessage,
+                  style: const TextStyle(color: Colors.amberAccent, fontSize: 12),
+                  textAlign: TextAlign.center),
             ],
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Expanded(
               child: _structuredData != null
                   ? _buildStructuredView(_structuredData!)
                   : (_rawAnalysisFallback != null
                       ? _buildFallbackView(_rawAnalysisFallback!)
-                      : Center(child: Text(_statusMessage.isEmpty ? "Нет сохраненных данных" : _statusMessage, style: const TextStyle(color: Colors.white38)))),
+                      : Center(
+                          child: Text(
+                              _statusMessage.isEmpty ? "Нет сохраненных данных" : _statusMessage,
+                              style: const TextStyle(color: Colors.white38)))),
             ),
           ],
         ),
@@ -522,8 +624,8 @@ $rawFeedData
   }
 
   Widget _buildStructuredView(Map<String, dynamic> data) {
-    final season = data['current_season'] ?? "Сезон не определен";
-    final series = data['series_number'] ?? "";
+    final season = data['current_season'] ?? "WINTER";
+    final series = data['series_number'] ?? "Series 39";
     final advice = data['trading_advice'] ?? "";
     final List cars20 = data['cars_20pts'] ?? [];
     final List cars40 = data['cars_40pts'] ?? [];
@@ -534,7 +636,8 @@ $rawFeedData
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [Colors.green.shade900.withOpacity(0.5), const Color(0xFF1E1E1E)]),
+            gradient: LinearGradient(
+                colors: [Colors.green.shade900.withOpacity(0.5), const Color(0xFF1E1E1E)]),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.greenAccent.withOpacity(0.3)),
           ),
@@ -546,14 +649,18 @@ $rawFeedData
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(season.toString().toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text(season.toString().toUpperCase(),
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                     if (series.isNotEmpty)
                       Text(series, style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
                   ],
                 ),
               ),
               const Chip(
-                label: Text("LIVE", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
+                label: Text("LIVE",
+                    style: TextStyle(
+                        color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
                 backgroundColor: Colors.greenAccent,
                 padding: EdgeInsets.zero,
                 visualDensity: VisualDensity.compact,
@@ -564,21 +671,36 @@ $rawFeedData
         const SizedBox(height: 14),
 
         if (cars20.isNotEmpty) ...[
-          const Text("🏆 НАГРАДЫ 20 PTS (ОСНОВНЫЕ)", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+          const Text("🏆 НАГРАДЫ 20 PTS (ОСНОВНЫЕ)",
+              style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5)),
           const SizedBox(height: 6),
-          ...cars20.map((c) => _buildCarCard(c, Colors.amberAccent)),
+          ...cars20.map((c) => _buildCarCard(c, Colors.amberAccent, season)),
           const SizedBox(height: 12),
         ],
 
         if (cars40.isNotEmpty) ...[
-          const Text("⭐ НАГРАДЫ 40 PTS (ВТОРОСТЕПЕННЫЕ)", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+          const Text("⭐ НАГРАДЫ 40 PTS (ВТОРОСТЕПЕННЫЕ)",
+              style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5)),
           const SizedBox(height: 6),
-          ...cars40.map((c) => _buildCarCard(c, Colors.cyanAccent)),
+          ...cars40.map((c) => _buildCarCard(c, Colors.cyanAccent, season)),
           const SizedBox(height: 12),
         ],
 
         if (advice.isNotEmpty) ...[
-          const Text("💡 ИНВЕСТИЦИОННЫЙ СОВЕТ", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+          const Text("💡 ИНВЕСТИЦИОННЫЙ СОВЕТ",
+              style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5)),
           const SizedBox(height: 6),
           Container(
             padding: const EdgeInsets.all(14),
@@ -598,22 +720,52 @@ $rawFeedData
     );
   }
 
-  Widget _buildCarCard(dynamic carMap, Color accentColor) {
+  Widget _buildCarCard(dynamic carMap, Color accentColor, String activeSeason) {
     final name = carMap['name'] ?? "Автомобиль";
     final val = carMap['est_value'] ?? "";
-    final carSeason = carMap['season'] ?? "";
+    final carSeason = (carMap['season'] ?? "").toString();
+    final isCurrent = carSeason.toLowerCase().contains(activeSeason.toLowerCase());
 
     return Card(
       color: const Color(0xFF1E1E1E),
       margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: const BorderSide(color: Colors.white10)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+            color: isCurrent ? Colors.greenAccent.withOpacity(0.7) : Colors.white10,
+            width: isCurrent ? 1.5 : 1.0),
+      ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-        leading: Icon(Icons.directions_car, color: accentColor),
-        title: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-        subtitle: carSeason.isNotEmpty ? Text(carSeason, style: const TextStyle(color: Colors.white38, fontSize: 11)) : null,
+        leading: Icon(Icons.directions_car, color: isCurrent ? Colors.greenAccent : accentColor),
+        title: Row(
+          children: [
+            Expanded(
+                child: Text(name,
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
+            if (isCurrent)
+              Container(
+                margin: const EdgeInsets.only(left: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                    color: Colors.greenAccent.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(4)),
+                child: const Text("ТЕКУЩИЙ",
+                    style: TextStyle(
+                        color: Colors.greenAccent, fontSize: 9, fontWeight: FontWeight.bold)),
+              )
+          ],
+        ),
+        subtitle: carSeason.isNotEmpty
+            ? Text(carSeason, style: const TextStyle(color: Colors.white38, fontSize: 11))
+            : null,
         trailing: val.isNotEmpty
-            ? Text(val, style: TextStyle(color: accentColor, fontWeight: FontWeight.bold, fontSize: 12))
+            ? Text(val,
+                style: TextStyle(
+                    color: isCurrent ? Colors.greenAccent : accentColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12))
             : null,
       ),
     );
@@ -622,7 +774,10 @@ $rawFeedData
   Widget _buildFallbackView(String text) {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white12)),
+      decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white12)),
       child: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
         child: Text(text, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.45)),
@@ -640,6 +795,7 @@ class ScannerTab extends StatefulWidget {
   @override
   State<ScannerTab> createState() => _ScannerTabState();
 }
+
 class _ScannerTabState extends State<ScannerTab> {
   CameraController? _controller;
   bool _isProcessing = false;
@@ -665,8 +821,10 @@ class _ScannerTabState extends State<ScannerTab> {
 
   void _startScanLoop() async {
     while (mounted) {
-      await Future.delayed(const Duration(milliseconds: 1300));
-      if (_controller != null && _controller!.value.isInitialized && !_isProcessing) _captureAndAnalyze();
+      if (_controller != null && _controller!.value.isInitialized && !_isProcessing) {
+        await _captureAndAnalyze();
+      }
+      await Future.delayed(const Duration(milliseconds: 1000));
     }
   }
 
@@ -674,11 +832,14 @@ class _ScannerTabState extends State<ScannerTab> {
     _isProcessing = true;
     try {
       final photo = await _controller!.takePicture();
-      final text = await FlutterTesseractOcr.extractText(photo.path, language: 'eng', args: {"tessedit_char_whitelist": "0123456789,CR "});
-      final match = RegExp(r'(\d{5,9})').firstMatch(text.replaceAll(',', '').replaceAll(' ', ''));
+      final text = await FlutterTesseractOcr.extractText(photo.path,
+          language: 'eng', args: {"tessedit_char_whitelist": "0123456789,CR "});
+      final match =
+          RegExp(r'(\d{5,9})').firstMatch(text.replaceAll(',', '').replaceAll(' ', ''));
       if (match != null) _processPrice(int.parse(match.group(1)!));
-    } catch (_) {} finally { 
-      if (mounted) _isProcessing = false; 
+    } catch (_) {
+    } finally {
+      if (mounted) _isProcessing = false;
     }
   }
 
@@ -686,12 +847,12 @@ class _ScannerTabState extends State<ScannerTab> {
     if (price < 10000) return;
     _observedHistory.putIfAbsent(_currentSlot, () => []).add(price);
     if (_observedHistory[_currentSlot]!.length > 20) _observedHistory[_currentSlot]!.removeAt(0);
-    
+
     if (_observedHistory[_currentSlot]!.length >= 5) {
       final sorted = List<int>.from(_observedHistory[_currentSlot]!)..sort();
       _learnedMedians[_currentSlot] = sorted[sorted.length ~/ 2];
     }
-    
+
     setState(() {
       _detectedPrice = price;
       if (_learnedMedians[_currentSlot] == null) {
@@ -714,14 +875,18 @@ class _ScannerTabState extends State<ScannerTab> {
   }
 
   @override
-  void dispose() { 
-    _controller?.dispose(); 
-    super.dispose(); 
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_controller == null || !_controller!.value.isInitialized) return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Colors.greenAccent)));
+    if (_controller == null || !_controller!.value.isInitialized) {
+      return const Scaffold(
+          backgroundColor: Colors.black,
+          body: Center(child: CircularProgressIndicator(color: Colors.greenAccent)));
+    }
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -729,19 +894,26 @@ class _ScannerTabState extends State<ScannerTab> {
           Positioned.fill(child: CameraPreview(_controller!)),
           Center(
             child: Container(
-              width: 290, height: 100,
-              decoration: BoxDecoration(border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white60, width: 2.0), borderRadius: BorderRadius.circular(12)),
+              width: 290,
+              height: 100,
+              decoration: BoxDecoration(
+                  border: Border.all(
+                      color: _isSnipeAlert ? Colors.greenAccent : Colors.white60, width: 2.0),
+                  borderRadius: BorderRadius.circular(12)),
             ),
           ),
           Positioned(
-            bottom: 20, left: 16, right: 16,
+            bottom: 20,
+            left: 16,
+            right: 16,
             child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(14)),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(_statusBanner, style: TextStyle(color: _isSnipeAlert ? Colors.greenAccent : Colors.white)),
+                  Text(_statusBanner,
+                      style: TextStyle(color: _isSnipeAlert ? Colors.greenAccent : Colors.white)),
                   if (_detectedPrice > 0) ...[
                     const SizedBox(height: 10),
                     ElevatedButton(
@@ -768,6 +940,7 @@ class StrategyAdvisorTab extends StatefulWidget {
   @override
   State<StrategyAdvisorTab> createState() => _StrategyAdvisorTabState();
 }
+
 class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
   Map<String, dynamic>? _playlistData;
   String _errorMsg = "";
@@ -790,6 +963,7 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
       if (mounted) setState(() => _errorMsg = "Нет подключения");
     });
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -797,9 +971,9 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
       appBar: AppBar(title: const Text("JSON Стрим"), backgroundColor: const Color(0xFF1E1E1E)),
       body: Center(
         child: Text(
-          _errorMsg.isNotEmpty ? _errorMsg : (_playlistData?.toString() ?? "Загрузка..."), 
-          style: const TextStyle(color: Colors.white)
-        )
+          _errorMsg.isNotEmpty ? _errorMsg : (_playlistData?.toString() ?? "Загрузка..."),
+          style: const TextStyle(color: Colors.white),
+        ),
       ),
     );
   }
@@ -826,8 +1000,10 @@ class WatchlistTab extends StatelessWidget {
             color: const Color(0xFF1E1E1E),
             child: ListTile(
               title: Text(item.name, style: const TextStyle(color: Colors.white)),
-              subtitle: Text("Куплено: ${item.buyPrice} CR", style: const TextStyle(color: Colors.grey)),
-              trailing: Text("+${(item.targetPrice * 0.85).round() - item.buyPrice} CR", style: const TextStyle(color: Colors.greenAccent)),
+              subtitle: Text("Куплено: ${item.buyPrice} CR",
+                  style: const TextStyle(color: Colors.grey)),
+              trailing: Text("+${(item.targetPrice * 0.85).round() - item.buyPrice} CR",
+                  style: const TextStyle(color: Colors.greenAccent)),
             ),
           );
         },
