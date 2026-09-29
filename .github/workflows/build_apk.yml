@@ -30,15 +30,15 @@ jobs:
           flutter create --org com.fh6.scanner --platforms android app_build
           cd app_build
 
-          # Добавляем все зависимости: камеру, tesseract, память и HTTP для стрим-манифеста
-          flutter pub add camera:0.10.5+9 flutter_tesseract_ocr shared_preferences:2.2.2 http:^1.2.2
+          # Устанавливаем ВСЕ зависимости, включая ИИ Gemini
+          flutter pub add camera:0.10.5+9 flutter_tesseract_ocr shared_preferences:2.2.2 http:^1.2.2 google_generative_ai:^0.4.3
 
           # Копируем ваш main.dart из репозитория
           if [ -f "../lib/main.dart" ]; then
             cp ../lib/main.dart lib/main.dart
           fi
 
-          # Выставляем совместимость SDK
+          # Выставляем совместимость SDK (решает ошибку Android SDK 35)
           sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/g' android/app/build.gradle || true
           sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/g' android/app/build.gradle || true
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle || true
