@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
@@ -73,10 +72,14 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString("user_portfolio_list");
     if (raw != null) {
-      final List decoded = jsonDecode(raw);
-      setState(() {
-        _portfolio = decoded.map((e) => WatchlistItem.fromMap(e)).toList();
-      });
+      try {
+        final List decoded = jsonDecode(raw);
+        setState(() {
+          _portfolio = decoded.map((e) => WatchlistItem.fromMap(e)).toList();
+        });
+      } catch (e) {
+        debugPrint("Ошибка загрузки портфеля: $e");
+      }
     }
   }
 
@@ -142,8 +145,8 @@ class SmartAdvisorTab extends StatefulWidget {
 }
 
 class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
-  // ВАЖНО: Вставьте свой ключ внутри одинарных кавычек
-  static const _apiKey = 'ВАШ_GEMINI_API_KEY';
+  // Ключ установлен корректно
+  static const _apiKey = 'AIzaSyBOoFuwfDEIOeQ2JFcutYOPt7GDbE0Anbc';
   
   bool _isAnalyzing = false;
   String _aiResponse = "Нажмите кнопку, чтобы Gemini прочитал сайт forza.net/fh6playlists и выдал советы...";
@@ -156,15 +159,15 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
 
     try {
       final url = Uri.parse('https://forza.net/fh6playlists');
-      final response = await http.get(url).timeout(const Duration(seconds: 15));
+      final response = await http.get(url).timeout(const Duration(seconds: 20));
       
-      if (response.statusCode != 200) throw Exception("Сайт недоступен");
+      if (!mounted) return;
+      if (response.statusCode != 200) throw Exception("Сайт недоступен (Код ${response.statusCode})");
 
       setState(() => _aiResponse = "2. Сайт загружен. ИИ анализирует текст...");
       
       String cleanText = response.body.replaceAll(RegExp(r'<[^>]*>'), ' ').replaceAll(RegExp(r'\s+'), ' ');
 
-      // Модель изменена на gemini-pro для совместимости
       final model = GenerativeModel(model: 'gemini-pro', apiKey: _apiKey);
       final prompt = '''
       Ты — эксперт по экономике Forza Horizon. Сегодня: ${DateTime.now()}.
@@ -177,11 +180,16 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       ''';
 
       final aiResult = await model.generateContent([Content.text(prompt)]);
+      
+      if (!mounted) return;
       setState(() => _aiResponse = aiResult.text ?? "Ошибка генерации ответа.");
     } catch (e) {
+      if (!mounted) return;
       setState(() => _aiResponse = "Ошибка: $e");
     } finally {
-      setState(() => _isAnalyzing = false);
+      if (mounted) {
+        setState(() => _isAnalyzing = false);
+      }
     }
   }
 
@@ -264,7 +272,9 @@ class _ScannerTabState extends State<ScannerTab> {
       final text = await FlutterTesseractOcr.extractText(photo.path, language: 'eng', args: {"tessedit_char_whitelist": "0123456789,CR "});
       final match = RegExp(r'(\d{5,9})').firstMatch(text.replaceAll(',', '').replaceAll(' ', ''));
       if (match != null) _processPrice(int.parse(match.group(1)!));
-    } catch (_) {} finally { _isProcessing = false; }
+    } catch (_) {} finally { 
+      if (mounted) _isProcessing = false; 
+    }
   }
 
   void _processPrice(int price) {
@@ -299,11 +309,14 @@ class _ScannerTabState extends State<ScannerTab> {
   }
 
   @override
-  void dispose() { _controller?.dispose(); super.dispose(); }
+  void dispose() { 
+    _controller?.dispose(); 
+    super.dispose(); 
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (_controller == null || !_controller!.value.isInitialized) return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator()));
+    if (_controller == null || !_controller!.value.isInitialized) return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Colors.greenAccent)));
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -352,11 +365,24 @@ class StrategyAdvisorTab extends StatefulWidget {
 }
 class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
   Map<String, dynamic>? _playlistData;
+  String _errorMsg = "";
+
   @override
   void initState() {
     super.initState();
     http.get(Uri.parse(PLAYLIST_FEED_URL)).then((res) {
-      if (res.statusCode == 200) setState(() => _playlistData = jsonDecode(res.body));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        try {
+          setState(() => _playlistData = jsonDecode(res.body));
+        } catch (e) {
+          setState(() => _errorMsg = "Ошибка чтения JSON");
+        }
+      } else {
+        setState(() => _errorMsg = "Сервер недоступен: ${res.statusCode}");
+      }
+    }).catchError((e) {
+      if (mounted) setState(() => _errorMsg = "Нет подключения");
     });
   }
   @override
@@ -364,7 +390,12 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(title: const Text("JSON Стрим"), backgroundColor: const Color(0xFF1E1E1E)),
-      body: Center(child: Text(_playlistData?.toString() ?? "Загрузка...", style: const TextStyle(color: Colors.white))),
+      body: Center(
+        child: Text(
+          _errorMsg.isNotEmpty ? _errorMsg : (_playlistData?.toString() ?? "Загрузка..."), 
+          style: const TextStyle(color: Colors.white)
+        )
+      ),
     );
   }
 }
