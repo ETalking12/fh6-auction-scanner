@@ -5,6 +5,7 @@ import urllib.request
 import urllib.error
 
 def get_current_season():
+    # Расчет игрового сезона по фиксированной базовой точке
     anchor = datetime(2026, 9, 10, 14, 30)
     now = datetime.utcnow()
     diff_days = (now - anchor).days
@@ -14,6 +15,7 @@ def get_current_season():
     return ["Summer", "Autumn", "Winter", "Spring"][season_index]
 
 def main():
+    # Проверка наличия API-ключа в секретах GitHub
     api_key = os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
         raise ValueError("API ключ DeepSeek не найден в секретах GitHub!")
@@ -21,12 +23,10 @@ def main():
     season = get_current_season()
     print(f"Определен текущий сезон: {season}")
 
-    # Абсолютно строгий промпт, запрещающий любые плейсхолдеры и заглушки
+    # Строгий промпт, исключающий заглушки и требующий актуальные данные Серии 5
     prompt = f"""
-Ты — бэкенд-сервер и главный дата-аналитик официального приложения аукциона Forza Horizon 6.
-Твоя задача — предоставить СТРОГО реальные, актуальные игровые данные для текущего активного сезона ({season}) в Серии 5: «Британский Автопром» (British Automotive).
-КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать абстрактные примеры, слова вроде "Точное название машины" или заглушки. Пиши только реальные модели машин, присутствующие в этой серии и сезоне игры (например, британские спорткары, эксклюзивы фестиваля, модели вроде Aston Martin, Bentley, Jaguar, Lotus и т.д.).
-
+Ты — профессиональный эксперт и финансовый аналитик аукциона Forza Horizon 6. 
+Сейчас в игре активен зимний сезон в рамках актуальной Серии 5: «Британский Автопром» (British Automotive). Главные машины всей серии: 2025 Bentley Continental GT Speed и 2019 Aston Martin Valhalla Concept Car.
 Верни СТРОГО валидный JSON без markdown-разметки (без ```json), содержащий точные данные по следующей структуре:
 {{
   "current_season": "{season}",
@@ -50,7 +50,7 @@ def main():
             {"role": "user", "content": prompt}
         ],
         "response_format": {"type": "json_object"},
-        "temperature": 0.1 # Минимальная температура для исключения «фантазий» модели
+        "temperature": 0.1
     }
 
     req = urllib.request.Request(
@@ -68,14 +68,17 @@ def main():
             raw_text = res_data["choices"][0]["message"]["content"]
             parsed_json = json.loads(raw_text)
 
-            # Сохраняем актуальный JSON
+            # Сохранение проверенного JSON в файл для приложения
             with open("playlist.json", "w", encoding="utf-8") as f:
                 json.dump(parsed_json, f, ensure_ascii=False, indent=4)
             
             print("Файл playlist.json успешно обновлен реальными данными!")
 
     except urllib.error.HTTPError as e:
-        print(f"Ошибка HTTP: {e.code} - {e.read().decode('utf-8')}")
+        print(f"Ошибка HTTP при запросе к DeepSeek: {e.code} - {e.read().decode('utf-8')}")
+        raise e
+    except Exception as e:
+        print(f"Произошла непредвиденная ошибка: {str(e)}")
         raise e
 
 if __name__ == "__main__":
