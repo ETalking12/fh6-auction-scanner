@@ -41,13 +41,21 @@ jobs:
           # Выставляем совместимость SDK (решает ошибку Android SDK 35)
           sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/g' android/app/build.gradle || true
           sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/g' android/app/build.gradle || true
-          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle || true
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdkVersion = 21/g' android/app/build.gradle || true
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle || true
 
-          # Отключаем сжатие R8 в build.gradle для предотвращения конфликтов с ML Kit
-          if [ -f "android/app/build.gradle" ]; then
-            sed -i '/isMinifyEnabled/s/true/false/g' android/app/build.gradle || true
-            sed -i '/minifyEnabled/s/true/false/g' android/app/build.gradle || true
+          # Создаем файл правил ProGuard, чтобы R8 не ругался на опциональные модули ML Kit
+          echo "-keep class com.google.mlkit.** { * }" > android/app/proguard-rules.pro
+          echo "-dontwarn com.google.mlkit.**" >> android/app/proguard-rules.pro
+
+          # Подключаем proguard-rules.pro в build.gradle, если он еще не прописан
+          if ! grep -q "proguard-rules.pro" android/app/build.gradle; then
+            sed -i '/signingConfigs {/i \
+     buildTypes {\
+        release {\
+            proguardFiles getDefaultProguardFile(\"proguard-android.txt\"), \"proguard-rules.pro\"\
+        }\
+    }' android/app/build.gradle || true
           fi
 
           # Разрешения на камеру, интернет и вибрацию
