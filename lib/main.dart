@@ -134,7 +134,7 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
 }
 
 // ==========================================
-// 1. ИИ-АНАЛИТИК САЙТА
+// 1. ИИ-АНАЛИТИК САЙТА (Gemini + Groq с автоподбором)
 // ==========================================
 class SmartAdvisorTab extends StatefulWidget {
   const SmartAdvisorTab({super.key});
@@ -146,7 +146,7 @@ class SmartAdvisorTab extends StatefulWidget {
 class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   final TextEditingController _keyController = TextEditingController();
   
-  String _selectedProvider = "gemini";
+  String _selectedProvider = "groq"; // По умолчанию переключаем на настроенный Groq
   String _geminiKey = "";
   String _groqKey = "";
   
@@ -164,7 +164,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
 
   Future<void> _loadState() async {
     final prefs = await SharedPreferences.getInstance();
-    final provider = prefs.getString("ai_provider_selection") ?? "gemini";
+    final provider = prefs.getString("ai_provider_selection") ?? "groq";
     final gKey = (prefs.getString("gemini_user_api_key") ?? "").trim();
     final rKey = (prefs.getString("groq_user_api_key") ?? "").trim();
     
@@ -243,6 +243,31 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     });
   }
 
+  Future<String> _findActiveGroqModel(String apiKey) async {
+    try {
+      final uri = Uri.https('api.groq.com', '/openai/v1/models');
+      final res = await http.get(
+        uri,
+        headers: {
+          "Authorization": "Bearer $apiKey",
+          "Content-Type": "application/json"
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final List models = data['data'] ?? [];
+        for (var m in models) {
+          final String id = m['id'] ?? '';
+          if (id.contains('instant') || id.contains('8b') || id.contains('gpt-oss') || id.contains('versatile')) {
+            return id;
+          }
+        }
+      }
+    } catch (_) {}
+    return 'llama-3.1-8b-instant';
+  }
+
   Future<void> _runAutoAnalysis() async {
     final currentKey = (_selectedProvider == "gemini" ? _geminiKey : _groqKey).trim();
     if (currentKey.isEmpty) {
@@ -289,47 +314,56 @@ $rawFeedData
       String lastError = "";
 
       if (_selectedProvider == "gemini") {
-        for (int attempt = 1; attempt <= 2; attempt++) {
-          if (!mounted) return;
-          setState(() => _statusMessage = "Анализ через Gemini 3.8 Flash (попытка $attempt)...");
+        final geminiModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+        
+        for (final modelName in geminiModels) {
+          for (int attempt = 1; attempt <= 2; attempt++) {
+            if (!mounted) return;
+            setState(() => _statusMessage = "Запрос к Gemini ($modelName, попытка $attempt)...");
 
-          final apiUrl = Uri.https(
-            'generativelanguage.googleapis.com',
-            '/v1beta/models/gemini-3.8-flash:generateContent',
-            {'key': currentKey},
-          );
+            final apiUrl = Uri.https(
+              'generativelanguage.googleapis.com',
+              '/v1beta/models/$modelName:generateContent',
+              {'key': currentKey},
+            );
 
-          final aiRes = await http.post(
-            apiUrl,
-            headers: {"Content-Type": "application/json"},
-            body: jsonEncode({
-              "contents": [
-                {
-                  "parts": [
-                    {"text": prompt}
-                  ]
-                }
-              ]
-            }),
-          ).timeout(const Duration(seconds: 35));
+            final aiRes = await http.post(
+              apiUrl,
+              headers: {"Content-Type": "application/json"},
+              body: jsonEncode({
+                "contents": [
+                  {
+                    "parts": [
+                      {"text": prompt}
+                    ]
+                  }
+                ]
+              }),
+            ).timeout(const Duration(seconds: 35));
 
-          if (aiRes.statusCode == 200) {
-            final jsonResult = jsonDecode(aiRes.body);
-            successfulText = jsonResult['candidates']?[0]?['content']?['parts']?[0]?['text'];
-            break;
-          } else if (aiRes.statusCode == 503) {
-            lastError = "Сервер Gemini перегружен (503). Повтор...";
-            await Future.delayed(const Duration(seconds: 2));
-          } else if (aiRes.statusCode == 429) {
-            lastError = "Квота запросов Gemini исчерпана (429). Подождите 15 секунд.";
-            await Future.delayed(const Duration(seconds: 3));
-          } else {
-            lastError = "Ошибка Gemini (HTTP ${aiRes.statusCode}):${aiRes.body}";
-            break;
+            if (aiRes.statusCode == 200) {
+              final jsonResult = jsonDecode(aiRes.body);
+              successfulText = jsonResult['candidates']?[0]?['content']?['parts']?[0]?['text'];
+              break;
+            } else if (aiRes.statusCode == 503) {
+              lastError = "Сервер Gemini перегружен (503). Повтор...";
+              await Future.delayed(const Duration(seconds: 2));
+            } else if (aiRes.statusCode == 429) {
+              lastError = "Квота запросов Gemini исчерпана (429). Подождите 15 секунд.";
+              await Future.delayed(const Duration(seconds: 3));
+            } else {
+              lastError = "Ошибка Gemini (HTTP ${aiRes.statusCode}):${aiRes.body}";
+              break;
+            }
           }
+          if (successfulText != null) break;
         }
       } else {
-        setState(() => _statusMessage = "Анализ через Groq (Llama 3.3)...");
+        // Подбираем активную модель Groq
+        setState(() => _statusMessage = "Определение активной модели Groq...");
+        final activeGroqModel = await _findActiveGroqModel(currentKey);
+
+        setState(() => _statusMessage = "Анализ через Groq ($activeGroqModel)...");
         
         final apiUrl = Uri.https('api.groq.com', '/openai/v1/chat/completions');
 
@@ -340,7 +374,7 @@ $rawFeedData
             "Authorization": "Bearer $currentKey"
           },
           body: jsonEncode({
-            "model": "llama-3.3-70b-versatile",
+            "model": activeGroqModel,
             "messages": [
               {"role": "user", "content": prompt}
             ],
