@@ -134,7 +134,7 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
 }
 
 // ==========================================
-// 1. ИИ-АНАЛИТИК САЙТА (Прямой REST API к Gemini)
+// 1. ИИ-АНАЛИТИК САЙТА (С вводом ключа в UI)
 // ==========================================
 class SmartAdvisorTab extends StatefulWidget {
   const SmartAdvisorTab({super.key});
@@ -144,14 +144,47 @@ class SmartAdvisorTab extends StatefulWidget {
 }
 
 class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
-  static const _apiKey = 'AIzaSyBOoFuwfDEIOeQ2JFcutYOPt7GDbE0Anbc';
-  
+  final TextEditingController _keyController = TextEditingController();
+  String _savedApiKey = "";
   bool _isAnalyzing = false;
-  String _aiResponse = "Нажмите кнопку, чтобы Gemini прочитал сайт forza.net/fh6playlists и выдал советы...";
+  String _aiResponse = "Введите ваш Gemini API ключ ниже, чтобы разблокировать ИИ...";
 
-  Future<String> _findActiveModel() async {
-    // 1. Опрашиваем список поддерживаемых аккаунтом моделей
-    final url = Uri.parse("https://generativelanguage.googleapis.com/v1beta/models?key=$_apiKey");
+  @override
+  void initState() {
+    super.initState();
+    _loadApiKey();
+  }
+
+  Future<void> _loadApiKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = prefs.getString("gemini_user_api_key") ?? "";
+    setState(() {
+      _savedApiKey = key;
+      _keyController.text = key;
+      if (key.isNotEmpty) {
+        _aiResponse = "Ключ загружен. Нажмите кнопку, чтобы проанализировать сайт forza.net/fh6playlists.";
+      }
+    });
+  }
+
+  Future<void> _saveApiKey() async {
+    final key = _keyController.text.trim();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString("gemini_user_api_key", key);
+    setState(() {
+      _savedApiKey = key;
+      _aiResponse = key.isNotEmpty 
+          ? "Ключ успешно сохранен! Нажмите «Спросить ИИ о сезонах»." 
+          : "Ключ удален.";
+    });
+    FocusScope.of(context).unfocus();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Настройки ключа обновлены"), duration: Duration(seconds: 2)),
+    );
+  }
+
+  Future<String> _findActiveModel(String apiKey) async {
+    final url = Uri.parse("https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey");
     final res = await http.get(url).timeout(const Duration(seconds: 10));
     
     if (res.statusCode == 200) {
@@ -165,23 +198,27 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
         }
       }
     } else {
-      throw Exception("Ошибка аккаунта/ключа (HTTP ${res.statusCode}):\n${res.body}");
+      throw Exception("Ошибка ключа (HTTP ${res.statusCode}):\n${res.body}");
     }
-    // Резервная актуальная модель по умолчанию
     return 'gemini-2.0-flash';
   }
 
   Future<void> _runAutoAnalysis() async {
+    if (_savedApiKey.isEmpty) {
+      setState(() => _aiResponse = "Сначала введите и сохраните Gemini API ключ!");
+      return;
+    }
+
     setState(() {
       _isAnalyzing = true;
       _aiResponse = "1. Проверка доступных моделей Gemini...";
     });
 
     try {
-      final activeModel = await _findActiveModel();
+      final activeModel = await _findActiveModel(_savedApiKey);
 
       if (!mounted) return;
-      setState(() => _aiResponse = "2. Загрузка forza.net/fh6playlists...\n(Модель: $activeModel)");
+      setState(() => _aiResponse = "2. Загрузка данных с forza.net/fh6playlists...\n(Модель: $activeModel)");
 
       final siteUrl = Uri.parse('https://forza.net/fh6playlists');
       final siteRes = await http.get(siteUrl).timeout(const Duration(seconds: 20));
@@ -203,8 +240,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       Текст: $cleanText
       ''';
 
-      // Прямой REST-запрос к API Google без посредников SDK
-      final apiUrl = Uri.parse("https://generativelanguage.googleapis.com/v1beta/models/$activeModel:generateContent?key=$_apiKey");
+      final apiUrl = Uri.parse("https://generativelanguage.googleapis.com/v1beta/models/$activeModel:generateContent?key=$_savedApiKey");
       final aiRes = await http.post(
         apiUrl,
         headers: {"Content-Type": "application/json"},
@@ -248,6 +284,37 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Поле для ввода и сохранения API-ключа
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _keyController,
+                    obscureText: true,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: "Вставьте Gemini API ключ (AIzaSy...)",
+                      hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
+                      filled: true,
+                      fillColor: const Color(0xFF1E1E1E),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white24,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: _saveApiKey,
+                  child: const Text("OK", style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
             ElevatedButton.icon(
               icon: _isAnalyzing 
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
@@ -256,7 +323,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               onPressed: _isAnalyzing ? null : _runAutoAnalysis,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             Expanded(
               child: Container(
                 padding: const EdgeInsets.all(16),
