@@ -499,7 +499,7 @@ class ScannerTab extends StatefulWidget {
 
 class _ScannerTabState extends State<ScannerTab> {
   CameraController? _controller;
-  final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+  final TextRecognizer _textRecognizer = TextRecognizer();
   bool _isProcessing = false;
   bool _isScanning = false;
   bool _isTorchOn = false;
