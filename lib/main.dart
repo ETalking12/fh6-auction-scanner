@@ -134,7 +134,7 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
 }
 
 // ==========================================
-// 1. ИИ-АНАЛИТИК САЙТА (С вводом ключа в UI)
+// 1. ИИ-АНАЛИТИК САЙТА (Gemini 3.8 Flash)
 // ==========================================
 class SmartAdvisorTab extends StatefulWidget {
   const SmartAdvisorTab({super.key});
@@ -184,23 +184,35 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   }
 
   Future<String> _findActiveModel(String apiKey) async {
-    final url = Uri.parse("https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey");
-    final res = await http.get(url).timeout(const Duration(seconds: 10));
-    
-    if (res.statusCode == 200) {
-      final data = jsonDecode(res.body);
-      final List models = data['models'] ?? [];
-      for (var m in models) {
-        final String name = m['name'] ?? '';
-        final List methods = m['supportedGenerationMethods'] ?? [];
-        if (methods.contains('generateContent')) {
-          return name.replaceFirst('models/', '');
+    try {
+      final url = Uri.parse("https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey");
+      final res = await http.get(url).timeout(const Duration(seconds: 10));
+      
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final List models = data['models'] ?? [];
+        
+        // 1. Приоритет: новейшие модели поколения 3.x
+        for (var m in models) {
+          final String name = m['name'] ?? '';
+          final List methods = m['supportedGenerationMethods'] ?? [];
+          if (methods.contains('generateContent') && name.contains('3.8-flash')) {
+            return name.replaceFirst('models/', '');
+          }
+        }
+
+        // 2. Любая доступная модель ветки 3.x
+        for (var m in models) {
+          final String name = m['name'] ?? '';
+          final List methods = m['supportedGenerationMethods'] ?? [];
+          if (methods.contains('generateContent') && name.contains('gemini-3.')) {
+            return name.replaceFirst('models/', '');
+          }
         }
       }
-    } else {
-      throw Exception("Ошибка ключа (HTTP ${res.statusCode}):\n${res.body}");
-    }
-    return 'gemini-2.0-flash';
+    } catch (_) {}
+    // Стандартное имя актуальной модели по умолчанию
+    return 'gemini-3.8-flash';
   }
 
   Future<void> _runAutoAnalysis() async {
@@ -211,7 +223,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
 
     setState(() {
       _isAnalyzing = true;
-      _aiResponse = "1. Проверка доступных моделей Gemini...";
+      _aiResponse = "1. Подключение к Gemini 3.8 Flash...";
     });
 
     try {
@@ -253,7 +265,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
             }
           ]
         }),
-      ).timeout(const Duration(seconds: 30));
+      ).timeout(const Duration(seconds: 35));
 
       if (!mounted) return;
 
@@ -284,7 +296,6 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Поле для ввода и сохранения API-ключа
             Row(
               children: [
                 Expanded(
