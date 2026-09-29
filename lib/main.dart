@@ -134,7 +134,7 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
 }
 
 // ==========================================
-// 1. ИИ-АНАЛИТИК САЙТА (Питается от проверенного JSON)
+// 1. ИИ-АНАЛИТИК САЙТА
 // ==========================================
 class SmartAdvisorTab extends StatefulWidget {
   const SmartAdvisorTab({super.key});
@@ -145,7 +145,11 @@ class SmartAdvisorTab extends StatefulWidget {
 
 class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   final TextEditingController _keyController = TextEditingController();
-  String _savedApiKey = "";
+  
+  String _selectedProvider = "gemini";
+  String _geminiKey = "";
+  String _groqKey = "";
+  
   bool _isAnalyzing = false;
   String _statusMessage = "";
   Map<String, dynamic>? _structuredData;
@@ -160,14 +164,19 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
 
   Future<void> _loadState() async {
     final prefs = await SharedPreferences.getInstance();
-    final key = (prefs.getString("gemini_user_api_key") ?? "").trim();
+    final provider = prefs.getString("ai_provider_selection") ?? "gemini";
+    final gKey = (prefs.getString("gemini_user_api_key") ?? "").trim();
+    final rKey = (prefs.getString("groq_user_api_key") ?? "").trim();
+    
     final cachedJson = prefs.getString("ai_season_analysis_json");
     final cachedRaw = prefs.getString("ai_season_analysis_raw");
     final updated = prefs.getString("ai_season_analysis_time") ?? "";
 
     setState(() {
-      _savedApiKey = key;
-      _keyController.text = key;
+      _selectedProvider = provider;
+      _geminiKey = gKey;
+      _groqKey = rKey;
+      _keyController.text = (provider == "gemini") ? gKey : rKey;
       _lastUpdatedTime = updated;
 
       if (cachedJson != null) {
@@ -178,8 +187,8 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       _rawAnalysisFallback = cachedRaw;
 
       if (_structuredData == null && _rawAnalysisFallback == null) {
-        _statusMessage = key.isEmpty 
-            ? "Введите ваш Gemini API ключ, чтобы разблокировать ИИ."
+        _statusMessage = ((provider == "gemini" && gKey.isEmpty) || (provider == "groq" && rKey.isEmpty))
+            ? "Введите API ключ для выбранного провайдера."
             : "Нажмите кнопку, чтобы получить детальный анализ сезона.";
       }
     });
@@ -188,14 +197,30 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   Future<void> _saveApiKey() async {
     final key = _keyController.text.trim();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString("gemini_user_api_key", key);
-    setState(() {
-      _savedApiKey = key;
-    });
+    
+    if (_selectedProvider == "gemini") {
+      await prefs.setString("gemini_user_api_key", key);
+      setState(() => _geminiKey = key);
+    } else {
+      await prefs.setString("groq_user_api_key", key);
+      setState(() => _groqKey = key);
+    }
+
     FocusScope.of(context).unfocus();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Ключ сохранен в памяти устройства"), duration: Duration(seconds: 2)),
     );
+  }
+
+  Future<void> _switchProvider(String? provider) async {
+    if (provider == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString("ai_provider_selection", provider);
+
+    setState(() {
+      _selectedProvider = provider;
+      _keyController.text = (provider == "gemini") ? _geminiKey : _groqKey;
+    });
   }
 
   Future<void> _saveAnalysisResult({Map<String, dynamic>? structured, String? raw}) async {
@@ -219,9 +244,9 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   }
 
   Future<void> _runAutoAnalysis() async {
-    final cleanKey = _savedApiKey.trim();
-    if (cleanKey.isEmpty) {
-      setState(() => _statusMessage = "Сначала сохраните Gemini API ключ!");
+    final currentKey = (_selectedProvider == "gemini" ? _geminiKey : _groqKey).trim();
+    if (currentKey.isEmpty) {
+      setState(() => _statusMessage = "Сначала сохраните API ключ для выбранного провайдера!");
       return;
     }
 
@@ -231,7 +256,6 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     });
 
     try {
-      // Загружаем готовые и чистые данные плейлиста
       final feedRes = await http.get(Uri.parse(PLAYLIST_FEED_URL)).timeout(const Duration(seconds: 20));
       
       if (!mounted) return;
@@ -239,12 +263,10 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
 
       final String rawFeedData = feedRes.body;
 
-      setState(() => _statusMessage = "Генерация инвестиционной стратегии...");
-
       final prompt = '''
 Ты — эксперт по экономике аукциона Forza Horizon.
 Ниже приведены официальные данные плейлиста фестиваля в формате JSON.
-Твоя задача — проанализировать их и вернуть ответ СТРОГО в формате JSON без каких-либо кавычек ```json, экранирований или дополнительного текста.
+Твоя задача — проанализировать их и вернуть ответ СТРОГО в формате JSON без кавычек ```json, экранирований или дополнительного текста.
 
 Формат вывода:
 {
@@ -256,7 +278,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   "cars_40pts": [
     {"name": "Название машины", "season": "Сезон", "est_value": "Оценка CR или Target Buyout"}
   ],
-  "trading_advice": "Развернутый совет по перепродаже: какие именно из указанных машин снайпить по указанному buyout, когда продавать за 20М CR, а какие держать в долгосрок."
+  "trading_advice": "Развернутый совет по перепродаже: какие машины снайпить по указанному buyout, когда продавать за 20М CR, а какие держать в долгосрок."
 }
 
 Данные плейлиста:
@@ -266,44 +288,71 @@ $rawFeedData
       String? successfulText;
       String lastError = "";
 
-      // Отправляем прямой запрос к модели gemini-3.8-flash
-      for (int attempt = 1; attempt <= 2; attempt++) {
-        if (!mounted) return;
-        setState(() => _statusMessage = "Анализ через Gemini 3.8 Flash (попытка $attempt)...");
+      if (_selectedProvider == "gemini") {
+        for (int attempt = 1; attempt <= 2; attempt++) {
+          if (!mounted) return;
+          setState(() => _statusMessage = "Анализ через Gemini 3.8 Flash (попытка $attempt)...");
 
-        final apiUrl = Uri.https(
-          'generativelanguage.googleapis.com',
-          '/v1beta/models/gemini-3.8-flash:generateContent',
-          {'key': cleanKey},
-        );
+          final apiUrl = Uri.https(
+            'generativelanguage.googleapis.com',
+            '/v1beta/models/gemini-3.8-flash:generateContent',
+            {'key': currentKey},
+          );
+
+          final aiRes = await http.post(
+            apiUrl,
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode({
+              "contents": [
+                {
+                  "parts": [
+                    {"text": prompt}
+                  ]
+                }
+              ]
+            }),
+          ).timeout(const Duration(seconds: 35));
+
+          if (aiRes.statusCode == 200) {
+            final jsonResult = jsonDecode(aiRes.body);
+            successfulText = jsonResult['candidates']?[0]?['content']?['parts']?[0]?['text'];
+            break;
+          } else if (aiRes.statusCode == 503) {
+            lastError = "Сервер Gemini перегружен (503). Повтор...";
+            await Future.delayed(const Duration(seconds: 2));
+          } else if (aiRes.statusCode == 429) {
+            lastError = "Квота запросов Gemini исчерпана (429). Подождите 15 секунд.";
+            await Future.delayed(const Duration(seconds: 3));
+          } else {
+            lastError = "Ошибка Gemini (HTTP ${aiRes.statusCode}):${aiRes.body}";
+            break;
+          }
+        }
+      } else {
+        setState(() => _statusMessage = "Анализ через Groq (Llama 3.3)...");
+        
+        final apiUrl = Uri.https('api.groq.com', '/openai/v1/chat/completions');
 
         final aiRes = await http.post(
           apiUrl,
-          headers: {"Content-Type": "application/json"},
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer $currentKey"
+          },
           body: jsonEncode({
-            "contents": [
-              {
-                "parts": [
-                  {"text": prompt}
-                ]
-              }
-            ]
+            "model": "llama-3.3-70b-versatile",
+            "messages": [
+              {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.2
           }),
         ).timeout(const Duration(seconds: 35));
 
         if (aiRes.statusCode == 200) {
           final jsonResult = jsonDecode(aiRes.body);
-          successfulText = jsonResult['candidates']?[0]?['content']?['parts']?[0]?['text'];
-          break;
-        } else if (aiRes.statusCode == 503) {
-          lastError = "Сервер перегружен (503). Повтор...";
-          await Future.delayed(const Duration(seconds: 2));
-        } else if (aiRes.statusCode == 429) {
-          lastError = "Квота запросов превышена (429). Подождите 15 секунд.";
-          await Future.delayed(const Duration(seconds: 3));
+          successfulText = jsonResult['choices']?[0]?['message']?['content'];
         } else {
-          lastError = "Ошибка HTTP ${aiRes.statusCode}:${aiRes.body}";
-          break;
+          lastError = "Ошибка Groq (HTTP ${aiRes.statusCode}):${aiRes.body}";
         }
       }
 
@@ -360,13 +409,37 @@ $rawFeedData
           children: [
             Row(
               children: [
+                const Text("Провайдер:", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                const SizedBox(width: 10),
+                ChoiceChip(
+                  label: const Text("Gemini", style: TextStyle(fontSize: 12)),
+                  selected: _selectedProvider == "gemini",
+                  selectedColor: Colors.greenAccent,
+                  backgroundColor: const Color(0xFF1E1E1E),
+                  labelStyle: TextStyle(color: _selectedProvider == "gemini" ? Colors.black : Colors.white),
+                  onSelected: (val) => _switchProvider("gemini"),
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: const Text("Groq (Llama)", style: TextStyle(fontSize: 12)),
+                  selected: _selectedProvider == "groq",
+                  selectedColor: Colors.greenAccent,
+                  backgroundColor: const Color(0xFF1E1E1E),
+                  labelStyle: TextStyle(color: _selectedProvider == "groq" ? Colors.black : Colors.white),
+                  onSelected: (val) => _switchProvider("groq"),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
                 Expanded(
                   child: TextField(
                     controller: _keyController,
                     obscureText: true,
                     style: const TextStyle(color: Colors.white, fontSize: 13),
                     decoration: InputDecoration(
-                      hintText: "Gemini API ключ (AIzaSy...)",
+                      hintText: _selectedProvider == "gemini" ? "Gemini ключ (AIzaSy...)" : "Groq ключ (gsk_...)",
                       hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
                       filled: true,
                       fillColor: const Color(0xFF1E1E1E),
