@@ -34,21 +34,13 @@ class WatchlistItem {
   final String dateAdded;
 
   WatchlistItem({
-    required this.id,
-    required this.name,
-    required this.buyPrice,
-    required this.targetPrice,
-    required this.status,
-    required this.dateAdded,
+    required this.id, required this.name, required this.buyPrice,
+    required this.targetPrice, required this.status, required this.dateAdded,
   });
 
   Map<String, dynamic> toMap() => {
-        "id": id,
-        "name": name,
-        "buyPrice": buyPrice,
-        "targetPrice": targetPrice,
-        "status": status,
-        "dateAdded": dateAdded,
+        "id": id, "name": name, "buyPrice": buyPrice,
+        "targetPrice": targetPrice, "status": status, "dateAdded": dateAdded,
       };
 
   factory WatchlistItem.fromMap(Map<String, dynamic> map) => WatchlistItem(
@@ -104,20 +96,13 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
   void _addQuickSnipeToPortfolio(String carName, int buyPrice) {
     final newItem = WatchlistItem(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      name: carName,
-      buyPrice: buyPrice,
-      targetPrice: 20000000,
-      status: "HOLD",
-      dateAdded: "Пойман сканером ${DateTime.now().day}.${DateTime.now().month}",
+      name: carName, buyPrice: buyPrice, targetPrice: 20000000,
+      status: "HOLD", dateAdded: "Пойман сканером ${DateTime.now().day}.${DateTime.now().month}",
     );
     setState(() => _portfolio.insert(0, newItem));
     _savePortfolio();
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("✓ $carName добавлен в Радар!"),
-        backgroundColor: Colors.green[800],
-        duration: const Duration(seconds: 2),
-      ),
+      SnackBar(content: Text("✓ $carName добавлен в Радар!"), backgroundColor: Colors.green[800], duration: const Duration(seconds: 2)),
     );
   }
 
@@ -151,7 +136,7 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
 }
 
 // =======================================================
-// 1. ИИ-АНАЛИТИК (Gemini / Groq / OpenRouter)
+// 1. ИИ-АНАЛИТИК (3 ПРОВАЙДЕРА + УМНОЕ ОБНОВЛЕНИЕ)
 // =======================================================
 class SmartAdvisorTab extends StatefulWidget {
   const SmartAdvisorTab({super.key});
@@ -176,7 +161,9 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   @override
   void initState() {
     super.initState();
-    _loadStateAndCheckThursdayTrigger();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadStateAndCheckTrigger();
+    });
   }
 
   @override
@@ -198,20 +185,15 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     final epoch = _getCurrentThursdayEpoch();
     final seasonIndex = epoch % 4;
     switch (seasonIndex) {
-      case 0:
-        return "Summer";
-      case 1:
-        return "Autumn";
-      case 2:
-        return "Winter";
-      case 3:
-        return "Spring";
-      default:
-        return "Winter";
+      case 0: return "Summer";
+      case 1: return "Autumn";
+      case 2: return "Winter";
+      case 3: return "Spring";
+      default: return "Winter";
     }
   }
 
-  Future<void> _loadStateAndCheckThursdayTrigger() async {
+  Future<void> _loadStateAndCheckTrigger() async {
     final prefs = await SharedPreferences.getInstance();
     final provider = prefs.getString("ai_provider_selection") ?? "gemini";
     final gKey = (prefs.getString("gemini_user_api_key") ?? "").trim();
@@ -246,15 +228,14 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
       }
 
       if (_structuredData == null) {
-        _statusMessage = _getCurrentKey().isEmpty
-            ? "Введите API ключ для выбранного провайдера."
-            : "Нажмите кнопку, чтобы получить детальный анализ сезона.";
+        _statusMessage = _getCurrentKey().isEmpty 
+            ? "Введите API ключ выбранного ИИ."
+            : "Нажмите кнопку для синхронизации наград.";
       }
     });
 
     final currentEpoch = _getCurrentThursdayEpoch();
     if (_getCurrentKey().isNotEmpty && currentEpoch > lastSyncedEpoch) {
-      debugPrint("Сработал триггер четверга: Epoch $currentEpoch. Автообновление...");
       await _runAutoAnalysis(isWeeklyAutoSync: true);
     }
   }
@@ -283,7 +264,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
     if (!mounted) return;
     FocusScope.of(context).unfocus();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Ключ сохранен в памяти устройства"), duration: Duration(seconds: 2)),
+      const SnackBar(content: Text("Ключ сохранен"), duration: Duration(seconds: 2)),
     );
   }
 
@@ -321,8 +302,7 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
 
   Future<void> _persistSeasonData(Map<String, dynamic> structured) async {
     final prefs = await SharedPreferences.getInstance();
-    final nowStr =
-        "${DateTime.now().day.toString().padLeft(2, '0')}.${DateTime.now().month.toString().padLeft(2, '0')} ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}";
+    final nowStr = "${DateTime.now().day.toString().padLeft(2, '0')}.${DateTime.now().month.toString().padLeft(2, '0')} ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}";
 
     await prefs.setString("cached_season_master_json", jsonEncode(structured));
     await prefs.setString("cached_season_master_time", nowStr);
@@ -338,29 +318,11 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
 
   Future<String> _fetchLiveExternalSource() async {
     try {
-      final siteUri = Uri.https('forza.net', '/fh6playlists');
-      final siteRes = await http.get(siteUri).timeout(const Duration(seconds: 10));
-      if (siteRes.statusCode == 200 && siteRes.body.length > 200) {
-        String text = siteRes.body
-            .replaceAll(RegExp(r'<script[\s\S]*?</script>', caseSensitive: false), ' ')
-            .replaceAll(RegExp(r'<style[\s\S]*?</style>', caseSensitive: false), ' ')
-            .replaceAll(RegExp(r'<[^>]*>'), ' ')
-            .replaceAll(RegExp(r'\s+'), ' ')
-            .trim();
-        if (text.length > 3500) text = text.substring(0, 3500);
-        if (text.toLowerCase().contains("series") || text.toLowerCase().contains("points")) {
-          return "Данные forza.net:\n$text";
-        }
-      }
-    } catch (_) {}
-
-    try {
-      final feedRes = await http.get(Uri.parse(PLAYLIST_FEED_URL)).timeout(const Duration(seconds: 10));
+      final feedRes = await http.get(Uri.parse(PLAYLIST_FEED_URL)).timeout(const Duration(seconds: 8));
       if (feedRes.statusCode == 200) {
         return "Манифест плейлиста:\n${feedRes.body}";
       }
     } catch (_) {}
-
     return "";
   }
 
@@ -378,24 +340,24 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   Future<void> _runAutoAnalysis({bool isWeeklyAutoSync = false}) async {
     final currentKey = _getCurrentKey().trim();
     if (currentKey.isEmpty) {
-      if (!isWeeklyAutoSync) {
+      if (!isWeeklyAutoSync && mounted) {
         setState(() => _statusMessage = "Сначала введите и сохраните API ключ!");
       }
       return;
     }
 
+    if (!mounted) return;
     setState(() {
       _isAnalyzing = true;
-      _statusMessage = isWeeklyAutoSync
-          ? "Четверг: плановая автоактуализация сезона..."
-          : "Загрузка данных из внешних источников...";
+      _statusMessage = isWeeklyAutoSync ? "Смена сезона: автообновление..." : "Подключение к $_selectedProvider...";
     });
 
     try {
       final String externalContent = await _fetchLiveExternalSource();
       final currentSeason = _calculateDynamicSeason();
 
-      setState(() => _statusMessage = "ИИ рассчитывает актуальные награды ($currentSeason)...");
+      if (!mounted) return;
+      setState(() => _statusMessage = "Анализ наград сезона $currentSeason...");
 
       final prompt = '''
 Ты — финансовый аналитик аукциона Forza Horizon 6.
@@ -403,22 +365,21 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
 СЕЙЧАС В ИГРЕ АКТИВЕН СЕЗОН: $currentSeason.
 Серверное время: ${DateTime.now().toUtc().toIso8601String()}.
 
-Внешний источник данных:
+Внешний источник:
 $externalContent
 
-Твоя задача — вернуть информацию о серии и наградах сезона $currentSeason.
-Верни ответ СТРОГО в формате валидного JSON без markdown и кавычек ```json:
+Верни СТРОГО валидный JSON без markdown:
 {
   "current_season": "$currentSeason",
   "series_number": "Название актуальной серии",
-  "series_rewards": "Награды за 80 PTS и 160 PTS всей серии",
+  "series_rewards": "Награды за 80 PTS и 160 PTS",
   "cars_20pts": [
-    {"name": "Точное название машины", "season": "Summer/Autumn/Winter/Spring", "est_value": "20M CR"}
+    {"name": "Название", "season": "Summer/Autumn/Winter/Spring", "est_value": "20M CR"}
   ],
   "cars_40pts": [
-    {"name": "Точное название машины", "season": "Summer/Autumn/Winter/Spring", "est_value": "Оценка CR"}
+    {"name": "Название", "season": "Summer/Autumn/Winter/Spring", "est_value": "Оценка CR"}
   ],
-  "trading_advice": "Стратегия на неделю: кого снайпить в сезон $currentSeason, максимальный buyout и когда продавать за 20M CR."
+  "trading_advice": "Стратегия на $currentSeason: кого снайпить, buyout и когда продавать за 20M CR."
 }
 ''';
 
@@ -426,9 +387,9 @@ $externalContent
       String lastError = "";
 
       if (_selectedProvider == "gemini") {
-        for (int attempt = 1; attempt <= 3; attempt++) {
+        for (int attempt = 1; attempt <= 2; attempt++) {
           if (!mounted) return;
-          setState(() => _statusMessage = "Запрос к Gemini 3.8 Flash (попытка $attempt)...");
+          setState(() => _statusMessage = "Gemini API (Попытка $attempt)...");
 
           final apiUrl = Uri.https(
             'generativelanguage.googleapis.com',
@@ -440,13 +401,7 @@ $externalContent
             apiUrl,
             headers: {"Content-Type": "application/json"},
             body: jsonEncode({
-              "contents": [
-                {
-                  "parts": [
-                    {"text": prompt}
-                  ]
-                }
-              ]
+              "contents": [{"parts": [{"text": prompt}]}]
             }),
           ).timeout(const Duration(seconds: 30));
 
@@ -454,28 +409,20 @@ $externalContent
             final jsonResult = jsonDecode(aiRes.body);
             successfulText = jsonResult['candidates']?[0]?['content']?['parts']?[0]?['text'];
             break;
-          } else if (aiRes.statusCode == 503) {
-            lastError = "Сервер Gemini временно перегружен (503). Повтор...";
-            await Future.delayed(const Duration(seconds: 2));
           } else if (aiRes.statusCode == 429) {
-            lastError = "Превышен минутный лимит запросов Gemini (429). Подождите 30 секунд.";
+            lastError = "Лимит Gemini (429). Ждите минуту.";
             break;
           } else {
-            lastError = "Ошибка Gemini (HTTP ${aiRes.statusCode}): ${aiRes.body}";
+            lastError = "Ошибка Gemini HTTP ${aiRes.statusCode}";
             break;
           }
         }
       } else if (_selectedProvider == "groq") {
-        setState(() => _statusMessage = "Запрос доступных моделей Groq...");
-        
-        // Автоматическое определение первой доступной модели в личном аккаунте Groq
+        setState(() => _statusMessage = "Проверка доступных моделей Groq...");
         String targetGroqModel = "llama-3.1-70b-versatile";
         try {
           final modelsUri = Uri.https('api.groq.com', '/openai/v1/models');
-          final mRes = await http.get(modelsUri, headers: {
-            "Authorization": "Bearer $currentKey"
-          }).timeout(const Duration(seconds: 8));
-          
+          final mRes = await http.get(modelsUri, headers: {"Authorization": "Bearer $currentKey"}).timeout(const Duration(seconds: 8));
           if (mRes.statusCode == 200) {
             final mData = jsonDecode(mRes.body);
             final List list = mData['data'] ?? [];
@@ -489,20 +436,16 @@ $externalContent
           }
         } catch (_) {}
 
-        setState(() => _statusMessage = "Синхронизация через Groq ($targetGroqModel)...");
+        if (!mounted) return;
+        setState(() => _statusMessage = "Синхронизация Groq ($targetGroqModel)...");
         final apiUrl = Uri.https('api.groq.com', '/openai/v1/chat/completions');
 
         final aiRes = await http.post(
           apiUrl,
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer $currentKey"
-          },
+          headers: {"Content-Type": "application/json", "Authorization": "Bearer $currentKey"},
           body: jsonEncode({
             "model": targetGroqModel,
-            "messages": [
-              {"role": "user", "content": prompt}
-            ],
+            "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.1
           }),
         ).timeout(const Duration(seconds: 30));
@@ -511,10 +454,10 @@ $externalContent
           final jsonResult = jsonDecode(aiRes.body);
           successfulText = jsonResult['choices']?[0]?['message']?['content'];
         } else {
-          lastError = "Ошибка Groq (HTTP ${aiRes.statusCode}): ${aiRes.body}";
+          lastError = "Ошибка Groq HTTP ${aiRes.statusCode}";
         }
       } else {
-        setState(() => _statusMessage = "Синхронизация через OpenRouter...");
+        setState(() => _statusMessage = "Синхронизация OpenRouter...");
         final apiUrl = Uri.https('openrouter.ai', '/api/v1/chat/completions');
 
         final aiRes = await http.post(
@@ -522,14 +465,12 @@ $externalContent
           headers: {
             "Content-Type": "application/json",
             "Authorization": "Bearer $currentKey",
-            "HTTP-Referer": "[https://github.com/ETalking12/fh6-auction-scanner](https://github.com/ETalking12/fh6-auction-scanner)",
+            "HTTP-Referer": "https://github.com/ETalking12/fh6-auction-scanner",
             "X-Title": "FH6 Scanner"
           },
           body: jsonEncode({
             "model": "meta-llama/llama-3.3-70b-instruct:free",
-            "messages": [
-              {"role": "user", "content": prompt}
-            ],
+            "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2
           }),
         ).timeout(const Duration(seconds: 40));
@@ -538,7 +479,7 @@ $externalContent
           final jsonResult = jsonDecode(aiRes.body);
           successfulText = jsonResult['choices']?[0]?['message']?['content'];
         } else {
-          lastError = "Ошибка OpenRouter (HTTP ${aiRes.statusCode}): ${aiRes.body}";
+          lastError = "Ошибка OpenRouter HTTP ${aiRes.statusCode}";
         }
       }
 
@@ -549,15 +490,16 @@ $externalContent
         if (parsed != null) {
           parsed['current_season'] = currentSeason;
           await _persistSeasonData(parsed);
+          setState(() => _statusMessage = "Успешно обновлено через $_selectedProvider.");
         } else {
-          setState(() => _statusMessage = "Ошибка декодирования формата JSON.");
+          setState(() => _statusMessage = "Ошибка: ИИ вернул неверный формат.");
         }
       } else {
         setState(() => _statusMessage = lastError.isNotEmpty ? lastError : "Не удалось получить ответ.");
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() => _statusMessage = "Ошибка: $e");
+      setState(() => _statusMessage = "Ошибка сети: проверьте подключение.");
     } finally {
       if (mounted) setState(() => _isAnalyzing = false);
     }
@@ -576,8 +518,7 @@ $externalContent
             Padding(
               padding: const EdgeInsets.only(right: 14),
               child: Center(
-                child: Text("Обновлено: $_lastUpdatedTime",
-                    style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                child: Text("Обновлено: $_lastUpdatedTime", style: const TextStyle(color: Colors.white54, fontSize: 11)),
               ),
             )
         ],
@@ -598,9 +539,7 @@ $externalContent
                     selected: _selectedProvider == "gemini",
                     selectedColor: Colors.greenAccent,
                     backgroundColor: const Color(0xFF1E1E1E),
-                    labelStyle: TextStyle(
-                        color: _selectedProvider == "gemini" ? Colors.black : Colors.white,
-                        fontWeight: FontWeight.bold),
+                    labelStyle: TextStyle(color: _selectedProvider == "gemini" ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
                     onSelected: (val) => _switchProvider("gemini"),
                   ),
                   const SizedBox(width: 6),
@@ -609,9 +548,7 @@ $externalContent
                     selected: _selectedProvider == "groq",
                     selectedColor: Colors.greenAccent,
                     backgroundColor: const Color(0xFF1E1E1E),
-                    labelStyle: TextStyle(
-                        color: _selectedProvider == "groq" ? Colors.black : Colors.white,
-                        fontWeight: FontWeight.bold),
+                    labelStyle: TextStyle(color: _selectedProvider == "groq" ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
                     onSelected: (val) => _switchProvider("groq"),
                   ),
                   const SizedBox(width: 6),
@@ -620,9 +557,7 @@ $externalContent
                     selected: _selectedProvider == "openrouter",
                     selectedColor: Colors.greenAccent,
                     backgroundColor: const Color(0xFF1E1E1E),
-                    labelStyle: TextStyle(
-                        color: _selectedProvider == "openrouter" ? Colors.black : Colors.white,
-                        fontWeight: FontWeight.bold),
+                    labelStyle: TextStyle(color: _selectedProvider == "openrouter" ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
                     onSelected: (val) => _switchProvider("openrouter"),
                   ),
                 ],
@@ -637,11 +572,7 @@ $externalContent
                     obscureText: true,
                     style: const TextStyle(color: Colors.white, fontSize: 13),
                     decoration: InputDecoration(
-                      hintText: _selectedProvider == "gemini"
-                          ? "Ключ Gemini (AIzaSy...)"
-                          : (_selectedProvider == "groq"
-                              ? "Ключ Groq (gsk_...)"
-                              : "Ключ OpenRouter (sk-or-v1-...)"),
+                      hintText: "Ключ $_selectedProvider...",
                       hintStyle: const TextStyle(color: Colors.white38, fontSize: 11),
                       filled: true,
                       fillColor: const Color(0xFF1E1E1E),
@@ -665,12 +596,9 @@ $externalContent
             const SizedBox(height: 10),
             ElevatedButton.icon(
               icon: _isAnalyzing
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
                   : const Icon(Icons.sync, color: Colors.black, size: 20),
-              label: Text(_isAnalyzing ? "Синхронизация..." : "Синхронизировать сейчас",
+              label: Text(_isAnalyzing ? "Опрос $_selectedProvider..." : "Синхронизировать сейчас",
                   style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14)),
               style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.greenAccent,
@@ -680,18 +608,13 @@ $externalContent
             ),
             if (_statusMessage.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text(_statusMessage,
-                  style: const TextStyle(color: Colors.amberAccent, fontSize: 12),
-                  textAlign: TextAlign.center),
+              Text(_statusMessage, style: const TextStyle(color: Colors.amberAccent, fontSize: 12), textAlign: TextAlign.center),
             ],
             const SizedBox(height: 10),
             Expanded(
               child: _structuredData != null
                   ? _buildStructuredView(_structuredData!)
-                  : Center(
-                      child: Text(
-                          _statusMessage.isEmpty ? "Нет сохраненных данных" : _statusMessage,
-                          style: const TextStyle(color: Colors.white38))),
+                  : Center(child: Text(_statusMessage.isEmpty ? "Ожидание данных..." : _statusMessage, style: const TextStyle(color: Colors.white38))),
             ),
           ],
         ),
@@ -701,7 +624,7 @@ $externalContent
 
   Widget _buildStructuredView(Map<String, dynamic> data) {
     final season = data['current_season']?.toString() ?? "WINTER";
-    final series = data['series_number']?.toString() ?? "Series 5 (British Automotive)";
+    final series = data['series_number']?.toString() ?? "Series";
     final seriesRewards = data['series_rewards']?.toString() ?? "";
     final advice = data['trading_advice']?.toString() ?? "";
     final List cars20 = (data['cars_20pts'] is List) ? data['cars_20pts'] : [];
@@ -713,8 +636,7 @@ $externalContent
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-                colors: [Colors.green.shade900.withOpacity(0.5), const Color(0xFF1E1E1E)]),
+            gradient: LinearGradient(colors: [Colors.green.shade900.withOpacity(0.5), const Color(0xFF1E1E1E)]),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.greenAccent.withOpacity(0.3)),
           ),
@@ -726,17 +648,13 @@ $externalContent
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(season.toUpperCase(),
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text(season.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                     Text(series, style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
                   ],
                 ),
               ),
               const Chip(
-                label: Text("LIVE",
-                    style: TextStyle(
-                        color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
+                label: Text("LIVE", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
                 backgroundColor: Colors.greenAccent,
                 padding: EdgeInsets.zero,
                 visualDensity: VisualDensity.compact,
@@ -758,12 +676,7 @@ $externalContent
               children: [
                 const Icon(Icons.stars, color: Colors.amberAccent, size: 20),
                 const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    seriesRewards,
-                    style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
-                  ),
-                ),
+                Expanded(child: Text(seriesRewards, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500))),
               ],
             ),
           ),
@@ -771,48 +684,26 @@ $externalContent
         ],
 
         if (cars20.isNotEmpty) ...[
-          const Text("🏆 НАГРАДЫ 20 PTS (ОСНОВНЫЕ)",
-              style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5)),
+          const Text("🏆 НАГРАДЫ 20 PTS", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
           const SizedBox(height: 6),
           ...cars20.map((c) => _buildCarCard(c, Colors.amberAccent, season)),
           const SizedBox(height: 12),
         ],
 
         if (cars40.isNotEmpty) ...[
-          const Text("⭐ НАГРАДЫ 40 PTS (ВТОРОСТЕПЕННЫЕ)",
-              style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5)),
+          const Text("⭐ НАГРАДЫ 40 PTS", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
           const SizedBox(height: 6),
           ...cars40.map((c) => _buildCarCard(c, Colors.cyanAccent, season)),
           const SizedBox(height: 12),
         ],
 
         if (advice.isNotEmpty) ...[
-          const Text("💡 ИНВЕСТИЦИОННЫЙ СОВЕТ",
-              style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5)),
+          const Text("💡 СТРАТЕГИЯ СНАЙПИНГА", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
           const SizedBox(height: 6),
           Container(
             padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E1E1E),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white12),
-            ),
-            child: Text(
-              advice,
-              style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.45),
-            ),
+            decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white12)),
+            child: Text(advice, style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.45)),
           ),
         ],
         const SizedBox(height: 20),
@@ -829,8 +720,6 @@ $externalContent
       name = carData['name']?.toString() ?? "Автомобиль";
       val = carData['est_value']?.toString() ?? "";
       carSeason = carData['season']?.toString() ?? "";
-    } else if (carData is String) {
-      name = carData;
     }
 
     final isCurrent = carSeason.toLowerCase().contains(activeSeason.toLowerCase());
@@ -840,42 +729,25 @@ $externalContent
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: BorderSide(
-            color: isCurrent ? Colors.greenAccent.withOpacity(0.7) : Colors.white10,
-            width: isCurrent ? 1.5 : 1.0),
+        side: BorderSide(color: isCurrent ? Colors.greenAccent.withOpacity(0.7) : Colors.white10, width: isCurrent ? 1.5 : 1.0),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
         leading: Icon(Icons.directions_car, color: isCurrent ? Colors.greenAccent : accentColor),
         title: Row(
           children: [
-            Expanded(
-                child: Text(name,
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
+            Expanded(child: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
             if (isCurrent)
               Container(
                 margin: const EdgeInsets.only(left: 6),
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                    color: Colors.greenAccent.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(4)),
-                child: const Text("ТЕКУЩИЙ",
-                    style: TextStyle(
-                        color: Colors.greenAccent, fontSize: 9, fontWeight: FontWeight.bold)),
+                decoration: BoxDecoration(color: Colors.greenAccent.withOpacity(0.2), borderRadius: BorderRadius.circular(4)),
+                child: const Text("ТЕКУЩИЙ", style: TextStyle(color: Colors.greenAccent, fontSize: 9, fontWeight: FontWeight.bold)),
               )
           ],
         ),
-        subtitle: carSeason.isNotEmpty
-            ? Text(carSeason, style: const TextStyle(color: Colors.white38, fontSize: 11))
-            : null,
-        trailing: val.isNotEmpty
-            ? Text(val,
-                style: TextStyle(
-                    color: isCurrent ? Colors.greenAccent : accentColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12))
-            : null,
+        subtitle: carSeason.isNotEmpty ? Text(carSeason, style: const TextStyle(color: Colors.white38, fontSize: 11)) : null,
+        trailing: val.isNotEmpty ? Text(val, style: TextStyle(color: isCurrent ? Colors.greenAccent : accentColor, fontWeight: FontWeight.bold, fontSize: 12)) : null,
       ),
     );
   }
@@ -894,6 +766,7 @@ class ScannerTab extends StatefulWidget {
 class _ScannerTabState extends State<ScannerTab> {
   CameraController? _controller;
   bool _isProcessing = false;
+  bool _isScanning = false;
   String _currentSlot = "Слот 1 (Авто)";
   final Map<String, List<int>> _observedHistory = {};
   final Map<String, int> _learnedMedians = {};
@@ -909,13 +782,14 @@ class _ScannerTabState extends State<ScannerTab> {
       _controller!.initialize().then((_) {
         if (!mounted) return;
         setState(() {});
+        _isScanning = true;
         _startScanLoop();
       });
     }
   }
 
   void _startScanLoop() async {
-    while (mounted) {
+    while (_isScanning && mounted) {
       if (_controller != null && _controller!.value.isInitialized && !_isProcessing) {
         await _captureAndAnalyze();
       }
@@ -924,17 +798,15 @@ class _ScannerTabState extends State<ScannerTab> {
   }
 
   Future<void> _captureAndAnalyze() async {
-    if (!mounted) return;
+    if (!mounted || !_isScanning) return;
     _isProcessing = true;
     try {
       final photo = await _controller!.takePicture();
       final text = await FlutterTesseractOcr.extractText(photo.path,
           language: 'eng', args: {"tessedit_char_whitelist": "0123456789,CR "});
-      final match =
-          RegExp(r'(\d{5,9})').firstMatch(text.replaceAll(',', '').replaceAll(' ', ''));
+      final match = RegExp(r'(\d{5,9})').firstMatch(text.replaceAll(',', '').replaceAll(' ', ''));
       if (match != null) _processPrice(int.parse(match.group(1)!));
-    } catch (_) {
-    } finally {
+    } catch (_) {} finally {
       if (mounted) _isProcessing = false;
     }
   }
@@ -972,6 +844,7 @@ class _ScannerTabState extends State<ScannerTab> {
 
   @override
   void dispose() {
+    _isScanning = false;
     _controller?.dispose();
     super.dispose();
   }
@@ -979,9 +852,7 @@ class _ScannerTabState extends State<ScannerTab> {
   @override
   Widget build(BuildContext context) {
     if (_controller == null || !_controller!.value.isInitialized) {
-      return const Scaffold(
-          backgroundColor: Colors.black,
-          body: Center(child: CircularProgressIndicator(color: Colors.greenAccent)));
+      return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Colors.greenAccent)));
     }
     return Scaffold(
       backgroundColor: Colors.black,
@@ -990,26 +861,21 @@ class _ScannerTabState extends State<ScannerTab> {
           Positioned.fill(child: CameraPreview(_controller!)),
           Center(
             child: Container(
-              width: 290,
-              height: 100,
+              width: 290, height: 100,
               decoration: BoxDecoration(
-                  border: Border.all(
-                      color: _isSnipeAlert ? Colors.greenAccent : Colors.white60, width: 2.0),
+                  border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white60, width: 2.0),
                   borderRadius: BorderRadius.circular(12)),
             ),
           ),
           Positioned(
-            bottom: 20,
-            left: 16,
-            right: 16,
+            bottom: 20, left: 16, right: 16,
             child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(14)),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(_statusBanner,
-                      style: TextStyle(color: _isSnipeAlert ? Colors.greenAccent : Colors.white)),
+                  Text(_statusBanner, style: TextStyle(color: _isSnipeAlert ? Colors.greenAccent : Colors.white)),
                   if (_detectedPrice > 0) ...[
                     const SizedBox(height: 10),
                     ElevatedButton(
@@ -1096,10 +962,8 @@ class WatchlistTab extends StatelessWidget {
             color: const Color(0xFF1E1E1E),
             child: ListTile(
               title: Text(item.name, style: const TextStyle(color: Colors.white)),
-              subtitle: Text("Куплено: ${item.buyPrice} CR",
-                  style: const TextStyle(color: Colors.grey)),
-              trailing: Text("+${(item.targetPrice * 0.85).round() - item.buyPrice} CR",
-                  style: const TextStyle(color: Colors.greenAccent)),
+              subtitle: Text("Куплено: ${item.buyPrice} CR", style: const TextStyle(color: Colors.grey)),
+              trailing: Text("+${(item.targetPrice * 0.85).round() - item.buyPrice} CR", style: const TextStyle(color: Colors.greenAccent)),
             ),
           );
         },
