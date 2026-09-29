@@ -135,7 +135,7 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
 }
 
 // ==========================================
-// 1. ИИ-АНАЛИТИК САЙТА (Gemini)
+// 1. ИИ-АНАЛИТИК САЙТА (Gemini с автоподбором модели)
 // ==========================================
 class SmartAdvisorTab extends StatefulWidget {
   const SmartAdvisorTab({super.key});
@@ -150,25 +150,57 @@ class _SmartAdvisorTabState extends State<SmartAdvisorTab> {
   bool _isAnalyzing = false;
   String _aiResponse = "Нажмите кнопку, чтобы Gemini прочитал сайт forza.net/fh6playlists и выдал советы...";
 
+  Future<String?> _detectWorkingModel() async {
+    try {
+      final res = await http.get(
+        Uri.parse("https://generativelanguage.googleapis.com/v1beta/models?key=$_apiKey"),
+      ).timeout(const Duration(seconds: 10));
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final List models = data['models'] ?? [];
+        
+        // Ищем модели, поддерживающие генерацию текста
+        for (var m in models) {
+          final String name = m['name'] ?? '';
+          final List methods = m['supportedGenerationMethods'] ?? [];
+          if (methods.contains('generateContent')) {
+            // Убираем префикс "models/" для SDK
+            return name.replaceFirst('models/', '');
+          }
+        }
+      } else {
+        debugPrint("ListModels статус: ${res.statusCode}, тело: ${res.body}");
+      }
+    } catch (e) {
+      debugPrint("Не удалось получить список моделей: $e");
+    }
+    return null;
+  }
+
   Future<void> _runAutoAnalysis() async {
     setState(() {
       _isAnalyzing = true;
-      _aiResponse = "1. Загрузка данных с forza.net/fh6playlists...";
+      _aiResponse = "1. Проверка доступных моделей Gemini...";
     });
 
     try {
+      // Автоматически определяем рабочую модель под ваш API-ключ
+      String selectedModel = await _detectWorkingModel() ?? 'gemini-1.5-flash';
+
+      setState(() => _aiResponse = "2. Загрузка данных с forza.net/fh6playlists...\n(Модель: $selectedModel)");
+
       final url = Uri.parse('https://forza.net/fh6playlists');
       final response = await http.get(url).timeout(const Duration(seconds: 20));
       
       if (!mounted) return;
       if (response.statusCode != 200) throw Exception("Сайт недоступен (Код ${response.statusCode})");
 
-      setState(() => _aiResponse = "2. Сайт загружен. ИИ анализирует текст...");
+      setState(() => _aiResponse = "3. Анализ сайта через $selectedModel...");
       
       String cleanText = response.body.replaceAll(RegExp(r'<[^>]*>'), ' ').replaceAll(RegExp(r'\s+'), ' ');
 
-      // ИСПОЛЬЗУЕМ АКТУАЛЬНУЮ МОДЕЛЬ
-      final model = GenerativeModel(model: 'gemini-1.5-pro', apiKey: _apiKey);
+      final model = GenerativeModel(model: selectedModel, apiKey: _apiKey);
       final prompt = '''
       Ты — эксперт по экономике Forza Horizon. Сегодня: ${DateTime.now()}.
       Ниже приведен текст с сайта forza.net/fh6playlists.
