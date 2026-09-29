@@ -1,20 +1,20 @@
 {
-    "current_season": "Winter",
-    "series_number": "Series 5: Британский Автопром",
-    "series_rewards": "Серия 5 (80 PTS / 160 PTS): Bentley Continental GT Speed '25 и Aston Martin Valhalla '19",
-    "cars_20pts": [
-        {
-            "name": "2024 MG Cyberster",
-            "season": "Winter",
-            "est_value": "20M CR"
-        }
-    ],
-    "cars_40pts": [
-        {
-            "name": "2022 Gordon Murray T.33",
-            "season": "Winter",
-            "est_value": "20M CR"
-        }
-    ],
-    "trading_advice": "Стратегия снайпинга для сезона Winter Серии 5: Британские новинки пользуются огромным спросом. Скупайте MG Cyberster и Gordon Murray T.33 по сниженным ценам на аукционе и перепродавайте по максимальной стоимости в 20M CR."
+  "current_season": "Winter",
+  "series_number": "Series 5: Британский Автопром",
+  "series_rewards": "Серия 5 (80 PTS / 160 PTS): Bentley Continental GT Speed '25 и Aston Martin Valhalla '19",
+  "cars_20pts": [
+    {
+      "name": "2006 Vauxhall Astra VXR",
+      "season": "Winter",
+      "est_value": "20M CR"
+    }
+  ],
+  "cars_40pts": [
+    {
+      "name": "2016 Bentley Bentayga",
+      "season": "Winter",
+      "est_value": "20M CR"
+    }
+  ],
+  "trading_advice": "Снайпинг в зимнем сезоне Series 5: обе награды — Vauxhall Astra VXR и Bentley Bentayga — имеют высокий спрос, так как выдаются только за сезонные очки. Рекомендуется мониторить аукцион в первые 24 часа после сброса сезона (четверг, 15:30 МСК), когда многие игроки выставляют дубликаты по заниженной цене. Установите фильтр по модели и максимальной цене выкупа 8–10 млн CR для Astra VXR и 12–15 млн CR для Bentayga. Лучшее время для покупки — поздний вечер пятницы и суббота, когда предложение максимально. Не покупайте в понедельник-вторник, когда цены взлетают до 20+ млн CR. Для перепродажи выгодно держать до конца серии (8 октября), затем продавать после закрытия сезона, когда предложение исчезает."
 }
