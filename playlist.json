@@ -1,0 +1,26 @@
+{
+  "series_number": 39,
+  "stream_source": "Forza Monthly Official",
+  "rewards": {
+    "summer": {
+      "car_20pts": "Ferrari F80 '25",
+      "car_40pts": "Toyota GR Yaris",
+      "target_buyout": 2200000
+    },
+    "autumn": {
+      "car_20pts": "Hyundai N Vision 74",
+      "car_40pts": "Subaru 22B STi",
+      "target_buyout": 1800000
+    },
+    "winter": {
+      "car_20pts": "Porsche Mission R",
+      "car_40pts": "McLaren Sabre '21",
+      "target_buyout": 2000000
+    },
+    "spring": {
+      "car_20pts": "Alfa Romeo Giulia GTAm",
+      "car_40pts": "Koenigsegg Jesko",
+      "target_buyout": 2500000
+    }
+  }
+}
