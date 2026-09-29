@@ -1,20 +1,20 @@
 {
     "current_season": "Winter",
-    "series_number": "Series Update",
-    "series_rewards": "Награды за 80 PTS и 160 PTS",
+    "series_number": "Series 5: Британский Автопром",
+    "series_rewards": "Серия 5 (80 PTS / 160 PTS): Bentley Continental GT Speed '25 и Aston Martin Valhalla '19",
     "cars_20pts": [
         {
-            "name": "Toyota 4Runner TRD '19",
+            "name": "2024 MG Cyberster",
             "season": "Winter",
             "est_value": "20M CR"
         }
     ],
     "cars_40pts": [
         {
-            "name": "Porsche 911 GT3 RS '23",
+            "name": "2022 Gordon Murray T.33",
             "season": "Winter",
             "est_value": "20M CR"
         }
     ],
-    "trading_advice": "Стратегия на сезон Winter: кого снайпить, максимальный buyout и когда продавать за 20M CR."
+    "trading_advice": "Стратегия снайпинга для сезона Winter Серии 5: Британские новинки пользуются огромным спросом. Скупайте MG Cyberster и Gordon Murray T.33 по сниженным ценам на аукционе и перепродавайте по максимальной стоимости в 20M CR."
 }
