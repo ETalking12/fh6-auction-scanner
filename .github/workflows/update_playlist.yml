@@ -1,0 +1,34 @@
+name: Auto Update Playlist
+
+on:
+  schedule:
+    # Запуск каждый четверг в 13:00 UTC (за 1.5 часа до смены сезона)
+    - cron: '0 13 * * 4'
+  workflow_dispatch: # Возможность запустить вручную кнопкой
+
+permissions:
+  contents: write
+
+jobs:
+  update-feed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run multi-channel parser
+        run: |
+          python scripts/fetch_playlist.py
+
+      - name: Commit & Push changes
+        run: |
+          git config --global user.name "FH-Auction-Bot"
+          git config --global user.email "bot@github-actions.local"
+          git add playlist.json
+          git commit -m "Auto-update playlist.json from live community channels" || exit 0
+          git push
