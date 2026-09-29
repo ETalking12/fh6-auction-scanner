@@ -1,13 +1,14 @@
 name: Build APK
 
 on:
-  push:
-    branches: [ main, master ]
   workflow_dispatch:
+  push:
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,33 +22,17 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
-          channel: 'stable'
+          flutter-version: '3.19.x' # Укажите вашу версию Flutter, если отличается
+          cache: true
 
-      - name: Create Self-Learning Flutter app
-        run: |
-          flutter create --org com.fh6.scanner --platforms android app_build
-          cd app_build
+      - name: Install dependencies
+        run: flutter pub get
 
-          flutter pub add camera:0.11.0+2 google_mlkit_text_recognition:0.13.0 shared_preferences:2.2.2 http:^1.2.2
-
-          if [ -f "../lib/main.dart" ]; then
-            cp ../lib/main.dart lib/main.dart
-          fi
-
-          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/g' android/app/build.gradle || true
-          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/g' android/app/build.gradle || true
-          sed -i 's/minSdk = flutter.minSdkVersion/minSdkVersion = 21/g' android/app/build.gradle || true
-          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle || true
-
-          sed -i '/<application/i <uses-permission android:name="android.permission.CAMERA"/>' android/app/src/main/AndroidManifest.xml
-          sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET"/>' android/app/src/main/AndroidManifest.xml
-          sed -i '/<application/i <uses-permission android:name="android.permission.VIBRATE"/>' android/app/src/main/AndroidManifest.xml
-
-          flutter build apk --release --no-shrink
+      - name: Build APK (Release without shrinking)
+        run: flutter build apk --release --no-shrink
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FH6-Auction-Master-APK
-          path: app_build/build/app/outputs/flutter-apk/app-release.apk
+          name: release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
