@@ -9,7 +9,6 @@ import 'package:flutter_tesseract_ocr/flutter_tesseract_ocr.dart';
 
 List<CameraDescription> cameras = [];
 
-// Добавлен параметр ?v=2 для обхода кэша GitHub и мгновенного получения свежих данных
 const String PLAYLIST_FEED_URL =
     "https://raw.githubusercontent.com/ETalking12/fh6-auction-scanner/main/playlist.json?v=2";
 
@@ -22,7 +21,7 @@ Future<void> main() async {
   }
   runApp(const MaterialApp(
     debugShowCheckedModeBanner: false,
-    home: FH6AuctionMasterApp(),
+    home: Forza6SniperApp(),
   ));
 }
 
@@ -31,7 +30,7 @@ class WatchlistItem {
   final String name;
   final int buyPrice;
   final int targetPrice;
-  final String status;
+  String status; // "HOLD" или "READY"
   final String dateAdded;
 
   WatchlistItem({
@@ -54,14 +53,14 @@ class WatchlistItem {
       );
 }
 
-class FH6AuctionMasterApp extends StatefulWidget {
-  const FH6AuctionMasterApp({super.key});
+class Forza6SniperApp extends StatefulWidget {
+  const Forza6SniperApp({super.key});
 
   @override
-  State<FH6AuctionMasterApp> createState() => _FH6AuctionMasterAppState();
+  State<Forza6SniperApp> createState() => _Forza6SniperAppState();
 }
 
-class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
+class _Forza6SniperAppState extends State<Forza6SniperApp> {
   int _currentIndex = 0;
   List<WatchlistItem> _portfolio = [];
 
@@ -98,12 +97,12 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
     final newItem = WatchlistItem(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: carName, buyPrice: buyPrice, targetPrice: 20000000,
-      status: "HOLD", dateAdded: "Пойман сканером ${DateTime.now().day}.${DateTime.now().month}",
+      status: "HOLD", dateAdded: "Поймано ${DateTime.now().day}.${DateTime.now().month}",
     );
     setState(() => _portfolio.insert(0, newItem));
     _savePortfolio();
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("✓ $carName добавлен в Радар!"), backgroundColor: Colors.green[800], duration: const Duration(seconds: 2)),
+      SnackBar(content: Text("✓ $carName добавлен в Forza6Sniper Радар!"), backgroundColor: Colors.green[800], duration: const Duration(seconds: 2)),
     );
   }
 
@@ -112,7 +111,7 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
     final screens = [
       ScannerTab(onAddToPortfolio: _addQuickSnipeToPortfolio),
       const StrategyAdvisorTab(),
-      WatchlistTab(portfolio: _portfolio, onUpdate: () => _savePortfolio()),
+      WatchlistTab(portfolio: _portfolio, onUpdate: _savePortfolio),
     ];
 
     return Scaffold(
@@ -135,7 +134,7 @@ class _FH6AuctionMasterAppState extends State<FH6AuctionMasterApp> {
 }
 
 // =======================================================
-// 1. АВТОМАТИЧЕСКИЙ СЕЗОННЫЙ СОВЕТНИК (GITHUB FEED)
+// 1. АВТОМАТИЧЕСКИЙ СЕЗОННЫЙ СОВЕТНИК + ТАЙМЕР
 // =======================================================
 class StrategyAdvisorTab extends StatefulWidget {
   const StrategyAdvisorTab({super.key});
@@ -148,11 +147,51 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
   Map<String, dynamic>? _playlistData;
   bool _isLoading = true;
   String _errorMsg = "";
+  
+  late Timer _timer;
+  String _timeRemaining = "";
 
   @override
   void initState() {
     super.initState();
     _fetchPlaylistData();
+    _startCountdownTimer();
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  void _startCountdownTimer() {
+    _updateTimer();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateTimer());
+  }
+
+  void _updateTimer() {
+    final now = DateTime.now().toUtc();
+    int daysUntilThursday = (DateTime.thursday - now.weekday) % 7;
+    if (daysUntilThursday == 0 && (now.hour > 14 || (now.hour == 14 && now.minute >= 30))) {
+      daysUntilThursday = 7;
+    }
+    
+    DateTime nextThursday = DateTime.utc(now.year, now.month, now.day).add(Duration(days: daysUntilThursday));
+    nextThursday = DateTime.utc(nextThursday.year, nextThursday.month, nextThursday.day, 14, 30);
+    
+    Duration diff = nextThursday.difference(now);
+    if (diff.isNegative) diff = const Duration(seconds: 0);
+
+    int days = diff.inDays;
+    int hours = diff.inHours % 24;
+    int minutes = diff.inMinutes % 60;
+    int seconds = diff.inSeconds % 60;
+
+    if (mounted) {
+      setState(() {
+        _timeRemaining = "${days}д ${hours}ч ${minutes}м ${seconds}с до смены сезона";
+      });
+    }
   }
 
   Future<void> _fetchPlaylistData() async {
@@ -191,7 +230,7 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        title: const Text("Сезонные награды и советы", style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+        title: const Text("Forza6Sniper | Сезон & Советы", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         backgroundColor: const Color(0xFF1E1E1E),
         elevation: 0,
         actions: [
@@ -241,25 +280,38 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.greenAccent.withOpacity(0.3)),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.calendar_today, color: Colors.greenAccent, size: 28),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(season.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                    Text(series, style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
-                  ],
-                ),
+              Row(
+                children: [
+                  const Icon(Icons.calendar_today, color: Colors.greenAccent, size: 26),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(season.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text(series, style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  const Chip(
+                    label: Text("SYNCED", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
+                    backgroundColor: Colors.greenAccent,
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  )
+                ],
               ),
-              const Chip(
-                label: Text("SYNCED", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
-                backgroundColor: Colors.greenAccent,
-                padding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
-              )
+              const Divider(color: Colors.white24, height: 20),
+              Row(
+                children: [
+                  const Icon(Icons.timer, color: Colors.amberAccent, size: 16),
+                  const SizedBox(width: 8),
+                  Text(_timeRemaining, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500)),
+                ],
+              ),
             ],
           ),
         ),
@@ -315,26 +367,20 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
   Widget _buildCarCard(dynamic carData, Color accentColor, String activeSeason) {
     String name = "Автомобиль";
     String val = "";
-    String carSeason = "";
-
     if (carData is Map) {
       name = carData['name']?.toString() ?? "Автомобиль";
       val = carData['est_value']?.toString() ?? "";
-      carSeason = carData['season']?.toString() ?? "";
     }
 
     return Card(
       color: const Color(0xFF1E1E1E),
       margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(color: Colors.white10),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: const BorderSide(color: Colors.white10)),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
         leading: Icon(Icons.directions_car, color: accentColor),
         title: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-        subtitle: carSeason.isNotEmpty ? Text(carSeason, style: const TextStyle(color: Colors.white38, fontSize: 11)) : null,
+        subtitle: const Text("Чистый доход с учетом налога аукциона (15%)", style: TextStyle(color: Colors.white38, fontSize: 10)),
         trailing: val.isNotEmpty ? Text(val, style: TextStyle(color: accentColor, fontWeight: FontWeight.bold, fontSize: 12)) : null,
       ),
     );
@@ -342,7 +388,7 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
 }
 
 // ==========================================
-// 2. СКАНЕР АУКЦИОНА
+// 2. СКАНЕР АУКЦИОНА С УЧЕТОМ НАЛОГА
 // ==========================================
 class ScannerTab extends StatefulWidget {
   final Function(String name, int price) onAddToPortfolio;
@@ -355,10 +401,10 @@ class _ScannerTabState extends State<ScannerTab> {
   CameraController? _controller;
   bool _isProcessing = false;
   bool _isScanning = false;
-  String _currentSlot = "Слот 1 (Авто)";
+  final String _currentSlot = "Слот 1 (Авто)";
   final Map<String, List<int>> _observedHistory = {};
   final Map<String, int> _learnedMedians = {};
-  int _detectedPrice = 0, _lastProfit = 0;
+  int _detectedPrice = 0, _lastNetProfit = 0;
   bool _isSnipeAlert = false;
   String _statusBanner = "Листайте лоты для калибровки нормы";
 
@@ -419,15 +465,15 @@ class _ScannerTabState extends State<ScannerTab> {
         _statusBanner = "Сбор: ${_observedHistory[_currentSlot]!.length}/5 лотов...";
       } else {
         final median = _learnedMedians[_currentSlot]!;
-        _lastProfit = (median * 0.85).round() - price;
+        _lastNetProfit = (median * 0.85).round() - price;
         final discount = ((median - price) / median * 100).round();
-        if (discount >= 20 && _lastProfit > 150000) {
+        if (discount >= 20 && _lastNetProfit > 150000) {
           _isSnipeAlert = true;
-          _statusBanner = "СНАЙП! Выгода: +${_lastProfit} CR";
+          _statusBanner = "СНАЙП! Чистый доход: +${_lastNetProfit} CR";
           HapticFeedback.heavyImpact();
         } else {
           _isSnipeAlert = false;
-          _statusBanner = "Норма (~$median CR). Профит: +$_lastProfit CR";
+          _statusBanner = "Норма (~$median CR). Чистый: +$_lastNetProfit CR";
         }
       }
     });
@@ -459,17 +505,14 @@ class _ScannerTabState extends State<ScannerTab> {
           Positioned.fill(child: CameraPreview(_controller!)),
           Center(
             child: Container(
-              width: 290,
-              height: 100,
+              width: 290, height: 100,
               decoration: BoxDecoration(
                   border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white60, width: 2.0),
                   borderRadius: BorderRadius.circular(12)),
             ),
           ),
           Positioned(
-            bottom: 20,
-            left: 16,
-            right: 16,
+            bottom: 20, left: 16, right: 16,
             child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(14)),
@@ -496,32 +539,70 @@ class _ScannerTabState extends State<ScannerTab> {
 }
 
 // ==========================================
-// 3. РАДАР (ПОРТФЕЛЬ)
+// 3. РАДАР (ПОРТФЕЛЬ С ПЕРЕКЛЮЧЕНИЕМ СТАТУСОВ)
 // ==========================================
-class WatchlistTab extends StatelessWidget {
+class WatchlistTab extends StatefulWidget {
   final List<WatchlistItem> portfolio;
   final VoidCallback onUpdate;
   const WatchlistTab({super.key, required this.portfolio, required this.onUpdate});
 
   @override
+  State<WatchlistTab> createState() => _WatchlistTabState();
+}
+
+class _WatchlistTabState extends State<WatchlistTab> {
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
-      appBar: AppBar(title: const Text("Портфель"), backgroundColor: const Color(0xFF1E1E1E)),
-      body: ListView.builder(
-        itemCount: portfolio.length,
-        itemBuilder: (ctx, i) {
-          final item = portfolio[i];
-          return Card(
-            color: const Color(0xFF1E1E1E),
-            child: ListTile(
-              title: Text(item.name, style: const TextStyle(color: Colors.white)),
-              subtitle: Text("Куплено: ${item.buyPrice} CR", style: const TextStyle(color: Colors.grey)),
-              trailing: Text("+${(item.targetPrice * 0.85).round() - item.buyPrice} CR", style: const TextStyle(color: Colors.greenAccent)),
+      appBar: AppBar(title: const Text("Forza6Sniper | Радар"), backgroundColor: const Color(0xFF1E1E1E)),
+      body: widget.portfolio.isEmpty
+          ? const Center(child: Text("Портфель пуст. Сохраняйте лоты со сканера!", style: TextStyle(color: Colors.white54)))
+          : ListView.builder(
+              itemCount: widget.portfolio.length,
+              itemBuilder: (ctx, i) {
+                final item = widget.portfolio[i];
+                final netProfit = (item.targetPrice * 0.85).round() - item.buyPrice;
+                
+                return Card(
+                  color: const Color(0xFF1E1E1E),
+                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  child: ListTile(
+                    title: Text(item.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    subtitle: Text("Куплено: ${item.buyPrice} CR\nДобавлено: ${item.dateAdded}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                    isThreeLine: true,
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text("+$netProfit CR", style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 13)),
+                        const SizedBox(height: 4),
+                        InkWell(
+                          onTap: () {
+                            setState(() {
+                              item.status = item.status == "HOLD" ? "READY" : "HOLD";
+                            });
+                            widget.onUpdate();
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: item.status == "READY" ? Colors.green.shade800 : Colors.grey.shade800,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              item.status == "READY" ? "🟢 ГОТОВ К ПРОДАЖЕ" : "🟡 ОТЛЕЖКА",
+                              style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
-          );
-        },
-      ),
     );
   }
 }
