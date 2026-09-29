@@ -30,7 +30,7 @@ jobs:
           flutter create --org com.fh6.scanner --platforms android app_build
           cd app_build
 
-          # Устанавливаем нужные зависимости (без Tesseract, с Google ML Kit)
+          # Устанавливаем нужные зависимости (Google ML Kit + камера + сети)
           flutter pub add camera:0.11.0+2 google_mlkit_text_recognition:0.13.0 shared_preferences:2.2.2 http:^1.2.2
 
           # Копируем ваш main.dart из репозитория
@@ -44,13 +44,19 @@ jobs:
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle || true
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle || true
 
+          # Отключаем сжатие R8 в build.gradle для предотвращения конфликтов с ML Kit
+          if [ -f "android/app/build.gradle" ]; then
+            sed -i '/isMinifyEnabled/s/true/false/g' android/app/build.gradle || true
+            sed -i '/minifyEnabled/s/true/false/g' android/app/build.gradle || true
+          fi
+
           # Разрешения на камеру, интернет и вибрацию
           sed -i '/<application/i <uses-permission android:name="android.permission.CAMERA"/>' android/app/src/main/AndroidManifest.xml
           sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET"/>' android/app/src/main/AndroidManifest.xml
           sed -i '/<application/i <uses-permission android:name="android.permission.VIBRATE"/>' android/app/src/main/AndroidManifest.xml
 
           # Сборка APK
-          flutter build apk --release --no-shrink --no-minify
+          flutter build apk --release --no-shrink
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
