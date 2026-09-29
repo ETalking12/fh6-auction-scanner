@@ -225,7 +225,6 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
     }
   }
 
-  // Модальное окно с фоновым фото и скомпонованными строками
   void _showCarDetails(BuildContext context, String carName, String estValue, String season) {
     const String imageUrl = "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=800&q=80";
 
@@ -531,7 +530,7 @@ class _ScannerTabState extends State<ScannerTab> {
       if (_controller != null && _controller!.value.isInitialized && !_isProcessing) {
         await _captureAndAnalyze();
       }
-      await Future.delayed(const Duration(milliseconds: 1000));
+      await Future.delayed(const Duration(milliseconds: 1200));
     }
   }
 
@@ -540,11 +539,26 @@ class _ScannerTabState extends State<ScannerTab> {
     _isProcessing = true;
     try {
       final photo = await _controller!.takePicture();
-      final text = await FlutterTesseractOcr.extractText(photo.path,
-          language: 'eng', args: {"tessedit_char_whitelist": "0123456789,CR "});
-      final match = RegExp(r'(\d{5,9})').firstMatch(text.replaceAll(',', '').replaceAll(' ', ''));
-      if (match != null) _processPrice(int.parse(match.group(1)!));
-    } catch (_) {} finally {
+      
+      // Распознаем текст с акцентом на цифры
+      final text = await FlutterTesseractOcr.extractText(
+        photo.path,
+        language: 'eng',
+        args: {"tessedit_char_whitelist": "0123456789,CR "}
+      );
+
+      // Очищаем от лишних символов, оставляя только цифры
+      final cleanText = text.replaceAll(RegExp(r'[^0-9]'), '');
+      
+      // Ищем числа длиной от 6 до 8 знаков (миллионные цены лотов)
+      final match = RegExp(r'\d{6,8}').firstMatch(cleanText);
+      if (match != null) {
+        int foundPrice = int.parse(match.group(0)!);
+        _processPrice(foundPrice);
+      }
+    } catch (e) {
+      debugPrint("OCR Error: $e");
+    } finally {
       if (mounted) _isProcessing = false;
     }
   }
@@ -568,9 +582,10 @@ class _ScannerTabState extends State<ScannerTab> {
         final median = _learnedMedians[_currentSlot]!;
         _lastNetProfit = (median * 0.85).round() - price;
         final discount = ((median - price) / median * 100).round();
+        
         if (discount >= 20 && _lastNetProfit > 150000) {
           _isSnipeAlert = true;
-          _statusBanner = "СНАЙП! Чистый доход: +${_lastNetProfit} CR";
+          _statusBanner = "🔥 СНАЙП! Чистый доход: +${_lastNetProfit} CR";
           HapticFeedback.heavyImpact();
         } else {
           _isSnipeAlert = false;
@@ -604,11 +619,18 @@ class _ScannerTabState extends State<ScannerTab> {
       body: Stack(
         children: [
           Positioned.fill(child: CameraPreview(_controller!)),
+          // Индикаторная рамка: меняет цвет на ярко-зеленый при нахождении выгодного лота
           Center(
             child: Container(
               width: 290, height: 100,
               decoration: BoxDecoration(
-                  border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white60, width: 2.0),
+                  border: Border.all(
+                    color: _isSnipeAlert ? Colors.greenAccent : Colors.white60,
+                    width: _isSnipeAlert ? 3.5 : 2.0,
+                  ),
+                  boxShadow: _isSnipeAlert
+                      ? [BoxShadow(color: Colors.greenAccent.withOpacity(0.5), blurRadius: 10, spreadRadius: 2)]
+                      : [],
                   borderRadius: BorderRadius.circular(12)),
             ),
           ),
@@ -616,11 +638,21 @@ class _ScannerTabState extends State<ScannerTab> {
             bottom: 20, left: 16, right: 16,
             child: Container(
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(14)),
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.transparent),
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(_statusBanner, style: TextStyle(color: _isSnipeAlert ? Colors.greenAccent : Colors.white)),
+                  Text(
+                    _statusBanner,
+                    style: TextStyle(
+                      color: _isSnipeAlert ? Colors.greenAccent : Colors.white,
+                      fontWeight: _isSnipeAlert ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
                   if (_detectedPrice > 0) ...[
                     const SizedBox(height: 10),
                     ElevatedButton(
