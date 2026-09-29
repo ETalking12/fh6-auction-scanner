@@ -488,7 +488,7 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
 }
 
 // ==========================================
-// 2. СКАНЕР АУКЦИОНА С РУЧНЫМ УПРАВЛЕНИЕМ ФОНАРИКОМ
+// 2. СКАНЕР АУКЦИОНА СТАБИЛЬНЫЙ
 // ==========================================
 class ScannerTab extends StatefulWidget {
   final Function(String name, int price) onAddToPortfolio;
@@ -520,7 +520,7 @@ class _ScannerTabState extends State<ScannerTab> {
     _controller = CameraController(cameras[0], ResolutionPreset.low, enableAudio: false);
     try {
       await _controller!.initialize();
-      await _controller!.setFlashMode(FlashMode.off); // Принудительно гасим вспышку
+      await _controller!.setFlashMode(FlashMode.off); // Принудительно выключаем вспышку
       if (!mounted) return;
       setState(() {});
       _isScanning = true;
@@ -572,15 +572,16 @@ class _ScannerTabState extends State<ScannerTab> {
             _processPrice(foundPrice);
           }
         } catch (e) {
-          debugPrint("Ошибка в цикле сканирования: $e");
+          debugPrint("Ошибка OCR: $e");
           if (mounted) {
-            setState(() => _lastRawText = "Ошибка OCR / Память");
+            setState(() => _lastRawText = "Ждем кадр...");
           }
         } finally {
           _isProcessing = false;
         }
       }
-      await Future.delayed(const Duration(milliseconds: 1200));
+      // Увеличенная пауза (2.5 сек) для защиты от перегрузки памяти и зависаний
+      await Future.delayed(const Duration(milliseconds: 2500));
     }
   }
 
@@ -625,7 +626,7 @@ class _ScannerTabState extends State<ScannerTab> {
         children: [
           Positioned.fill(child: CameraPreview(_controller!)),
           
-          // Кнопка ручного включения/выключения фонарика
+          // Кнопка ручного включения/выключения фонарика в правом верхнем углу
           Positioned(
             top: 45, right: 20,
             child: FloatingActionButton.small(
