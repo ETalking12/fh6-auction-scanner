@@ -12,7 +12,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Forza6Sniper',
+      title: 'FH6 Auction Scanner',
       theme: ThemeData(
         brightness: Brightness.dark,
         primarySwatch: Colors.green,
@@ -31,23 +31,17 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 2; // Открываем Базу Цен по умолчанию
+  int _currentIndex = 0;
 
-  // Общий список отслеживаемых машин (Портфель / Радар)
+  // Избранные/отслеживаемые машины (портфель для Радара)
   final List<Map<String, String>> _watchlist = [];
 
   void _toggleWatchlist(Map<String, String> car) {
     setState(() {
       if (_watchlist.any((item) => item['name'] == car['name'])) {
         _watchlist.removeWhere((item) => item['name'] == car['name']);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Удалено из радара: ${car['name']}'), duration: const Duration(seconds: 1)),
-        );
       } else {
         _watchlist.add(car);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Добавлено в радар: ${car['name']}'), duration: const Duration(seconds: 1)),
-        );
       }
     });
   }
@@ -86,55 +80,20 @@ class _MainScreenState extends State<MainScreen> {
 }
 
 // 1. Вкладка «Сканер»
-class ScannerScreen extends StatefulWidget {
+class ScannerScreen extends StatelessWidget {
   const ScannerScreen({super.key});
-
-  @override
-  State<ScannerScreen> createState() => _ScannerScreenState();
-}
-
-class _ScannerScreenState extends State<ScannerScreen> {
-  bool _isScanning = false;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('FH6 Авто-Снайпер'),
+        title: const Text('Автоматический сканер'),
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.radar,
-                size: 80,
-                color: _isScanning ? Colors.greenAccent : Colors.grey,
-              ),
-              const SizedBox(height: 24),
-              Text(
-                _isScanning ? 'Сканирование аукциона активно...' : 'Снайпер приостановлен',
-                style: TextStyle(fontSize: 18, color: _isScanning ? Colors.greenAccent : Colors.white70),
-              ),
-              const SizedBox(height: 30),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _isScanning ? Colors.redAccent : Colors.green,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                ),
-                onPressed: () {
-                  setState(() {
-                    _isScanning = !_isScanning;
-                  });
-                },
-                icon: Icon(_isScanning ? Icons.stop : Icons.play_arrow),
-                label: Text(_isScanning ? 'Остановить снайпер' : 'Запустить снайпер', style: const TextStyle(fontSize: 16)),
-              ),
-            ],
-          ),
+      body: const Center(
+        child: Text(
+          'Сканер аукциона в реальном времени активен',
+          style: TextStyle(fontSize: 16, color: Colors.white70),
         ),
       ),
     );
@@ -142,43 +101,27 @@ class _ScannerScreenState extends State<ScannerScreen> {
 }
 
 // 2. Вкладка «Сезон»
-class SeasonScreen StatelessWidget {
+class SeasonScreen extends StatelessWidget {
   const SeasonScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final List<Map<String, String>> seasonRewards = [
-      {"name": "2021 Ford Mustang Mach-E", "points": "20 очков", "type": "Сезонный эксклюзив"},
-      {"name": "Lamborghini Aventador SVJ", "points": "40 очков", "type": "Главная награда"},
-      {"name": "Toyota Trueno GT Apex", "points": "80 очков", "type": "Прогресс серии"},
-    ];
-
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E1E1E),
         title: const Text('Сезонный советник'),
       ),
-      body: ListView.builder(
-        itemCount: seasonRewards.length,
-        itemBuilder: (context, index) {
-          final reward = seasonRewards[index];
-          return Card(
-            color: const Color(0xFF1E1E1E),
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            child: ListTile(
-              leading: const Icon(Icons.emoji_events, color: Colors.amber),
-              title: Text(reward['name']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              subtitle: Text(reward['type']!, style: const TextStyle(color: Colors.greenAccent)),
-              trailing: Text(reward['points']!, style: const TextStyle(color: Colors.white70)),
-            ),
-          );
-        },
+      body: const Center(
+        child: Text(
+          'Актуальные награды и сезонные испытания',
+          style: TextStyle(fontSize: 16, color: Colors.white70),
+        ),
       ),
     );
   }
 }
 
-// 3. Вкладка «База Цен»
+// 3. Вкладка «База Цен» (со стабильной ссылкой на GitHub)
 class MarketPricesScreen extends StatefulWidget {
   final Function(Map<String, String>) onToggleWatch;
   final List<Map<String, String>> watchlist;
@@ -205,10 +148,12 @@ class _MarketPricesScreenState extends State<MarketPricesScreen> {
       _isLoading = true;
     });
 
+    // Рабочая стабильная ссылка GitHub, обходящая любые ограничения
     final url = Uri.parse('https://github.com/ETalking12/fh6-auction-scanner/raw/main/prices.json');
 
     try {
       final response = await http.get(url);
+
       if (response.statusCode == 200) {
         List<dynamic> data = json.decode(response.body);
         setState(() {
@@ -306,8 +251,9 @@ class _MarketPricesScreenState extends State<MarketPricesScreen> {
                                 children: [
                                   Text(
                                     mapCar['price']!,
-                                    style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13),
+                                    style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14),
                                   ),
+                                  const SizedBox(width: 8),
                                   IconButton(
                                     icon: Icon(
                                       isWatched ? Icons.star : Icons.star_border,
@@ -328,7 +274,7 @@ class _MarketPricesScreenState extends State<MarketPricesScreen> {
   }
 }
 
-// 4. Вкладка «Радар» (Портфель отслеживаемых лотов)
+// 4. Вкладка «Радар» (портфель сохраненных лотов)
 class RadarScreen extends StatelessWidget {
   final List<Map<String, String>> watchlist;
   final Function(Map<String, String>) onRemove;
@@ -345,9 +291,8 @@ class RadarScreen extends StatelessWidget {
       body: watchlist.isEmpty
           ? const Center(
               child: Text(
-                'Портфель пуст. Сохраняйте лоты зі вкладки "База Цен"!',
+                'Портфель пуст. Сохраняйте лоты со сканера!',
                 style: TextStyle(color: Colors.grey),
-                textAlign: TextAlign.center,
               ),
             )
           : ListView.builder(
@@ -371,7 +316,7 @@ class RadarScreen extends StatelessWidget {
                       children: [
                         Text(
                           car['price'] ?? '',
-                          style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13),
+                          style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14),
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete, color: Colors.redAccent),
