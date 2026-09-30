@@ -85,7 +85,7 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
-// 1. Вкладка «Сканер» (с OCR-логикой и кнопкой сохранения в Радар, как на вашем скрине)
+// 1. Вкладка «Сканер» (с оригинальным OCR интерфейсом и логами)
 class ScannerScreen extends StatefulWidget {
   final Function(Map<String, String>) onSaveToRadar;
 
@@ -96,7 +96,6 @@ class ScannerScreen extends StatefulWidget {
 }
 
 class _ScannerScreenState extends State<ScannerScreen> {
-  // Пример найденного лота с низкой ценой (как на вашем скриншоте)
   final Map<String, String> detectedCar = {
     'name': '2016 Bentley Bentayga',
     'price': '142 000 CR',
@@ -116,9 +115,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // Верхняя часть: имитация превью камеры / сканирования аукциона
             Container(
-              height: 220,
+              height: 200,
               width: double.infinity,
               decoration: BoxDecoration(
                 color: Colors.black54,
@@ -127,9 +125,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
               ),
               child: Stack(
                 children: [
-                  const Center(
-                    child: Icon(Icons.camera, size: 64, color: Colors.white24),
-                  ),
+                  const Center(child: Icon(Icons.camera, size: 64, color: Colors.white24)),
                   Positioned(
                     top: 12,
                     left: 12,
@@ -146,8 +142,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            
-            // Карточка с логами OCR и результатом сканирования (как на скриншоте)
             Expanded(
               child: Container(
                 width: double.infinity,
@@ -161,7 +155,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'OCR видит: ПРОДАНО!\nПРОДАНО!\nНЕ ПРОДАНО!\nBentley Bentayga 2016...',
+                      'OCR видит: nPROAAHO!\nnPROAAHO!\nНЕ NPROAAHO!\nnonyY...',
                       style: TextStyle(color: Colors.grey, fontSize: 13, fontFamily: 'monospace'),
                     ),
                     const Spacer(),
@@ -220,38 +214,153 @@ class _ScannerScreenState extends State<ScannerScreen> {
   }
 }
 
-// 2. Вкладка «Сезон & Советы»
+// 2. Вкладка «Сезон & Советы» (с детальными карточками, таймером и модалкой характеристик)
 class SeasonScreen extends StatelessWidget {
   const SeasonScreen({super.key});
 
+  void _showCarDetails(BuildContext context, String title, String classInfo, String drive, String liquidity, String tip) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.directions_car, color: Colors.greenAccent),
+            const SizedBox(width: 10),
+            Expanded(child: Text(title, style: const TextStyle(fontSize: 18))),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _detailRow('Сезон награды:', 'Winter'),
+            _detailRow('Рыночный потолок:', '20M CR'),
+            _detailRow('Рекомендуемый класс:', classInfo),
+            _detailRow('Тип привода:', drive),
+            _detailRow('Ликвидность:', liquidity),
+            const SizedBox(height: 12),
+            Text('💡 Совет по снайпингу: $tip', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('ЗАКРЫТЬ', style: TextStyle(color: Colors.greenAccent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final List<Map<String, String>> seasonRewards = [
-      {"name": "2021 Ford Mustang Mach-E", "points": "20 очков", "type": "Сезонный эксклюзив"},
-      {"name": "Lamborghini Aventador SVJ", "points": "40 очков", "type": "Главная награда"},
-      {"name": "Toyota Trueno GT Apex", "points": "80 очков", "type": "Прогресс серии"},
-    ];
-
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E1E1E),
         title: const Text('Сезон & Советы'),
       ),
-      body: ListView.builder(
-        itemCount: seasonRewards.length,
-        itemBuilder: (context, index) {
-          final reward = seasonRewards[index];
-          return Card(
-            color: const Color(0xFF1E1E1E),
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            child: ListTile(
-              leading: const Icon(Icons.emoji_events, color: Colors.amber),
-              title: Text(reward['name']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              subtitle: Text(reward['type']!, style: const TextStyle(color: Colors.greenAccent)),
-              trailing: Text(reward['points']!, style: const TextStyle(color: Colors.white70)),
+      body: ListView(
+        padding: const EdgeInsets.all(12),
+        children: [
+          // Шапка сезона
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.green.withOpacity(0.4)),
             ),
-          );
-        },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: const [
+                    Text('WINTER\nSeries 5: Британский Автопром', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    Chip(backgroundColor: Colors.green, label: Text('SYNCED', style: TextStyle(fontSize: 11))),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text('⏳ 1д 22ч 33м 24с до смены сезона', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Карточка 1: 2006 Vauxhall Astra VXR
+          Card(
+            color: const Color(0xFF1E1E1E),
+            child: ListTile(
+              leading: const Icon(Icons.directions_car, color: Colors.amber),
+              title: const Text('2006 Vauxhall Astra VXR', style: TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: const Text('Тапните для просмотра характеристик', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              trailing: const Text('20M CR', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+              onTap: () => _showCarDetails(
+                context,
+                '2006 Vauxhall Astra VXR',
+                'A 700 / S1 850',
+                'Передний (FWD)',
+                '🔥 Дефицит (Топ)',
+                'Модель пользуется высоким спросом в текущей серии. Скупайте лоты со скидкой и выставляйте по максимальной цене.',
+              ),
+            ),
+          ),
+
+          // Карточка 2: 2016 Bentley Bentayga
+          Card(
+            color: const Color(0xFF1E1E1E),
+            child: ListTile(
+              leading: const Icon(Icons.directions_car, color: Colors.greenAccent),
+              title: const Text('2016 Bentley Bentayga', style: TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: const Text('Тапните для просмотра характеристик', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              trailing: const Text('20M CR', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+              onTap: () => _showCarDetails(
+                context,
+                '2016 Bentley Bentayga',
+                'S1 900 / S2 998',
+                'Полный (AWD) / Задний',
+                '🔥 Дефицит (Топ)',
+                'Высокий спрос, так как выдается только за сезонные очки. Установите фильтр по максимальной цене выкупа 12–15 млн CR.',
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Блок стратегии
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('💡 СТРАТЕГИЯ СНАЙПИНГА', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.greenAccent)),
+                SizedBox(height: 8),
+                Text(
+                  'Снайпинг в зимнем сезоне Series 5: обе награды имеют высокий спрос. Мониторьте аукцион в первые 24 часа после сброса сезона (четверг), когда игроки выставляют дубликаты по заниженной цене.',
+                  style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.3),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -284,12 +393,10 @@ class _MarketPricesScreenState extends State<MarketPricesScreen> {
       _isLoading = true;
     });
 
-    // Рабочая стабильная ссылка GitHub без ошибок 404
     final url = Uri.parse('https://github.com/ETalking12/fh6-auction-scanner/raw/main/prices.json');
 
     try {
       final response = await http.get(url);
-
       if (response.statusCode == 200) {
         List<dynamic> data = json.decode(response.body);
         setState(() {
@@ -387,9 +494,8 @@ class _MarketPricesScreenState extends State<MarketPricesScreen> {
                                 children: [
                                   Text(
                                     mapCar['price']!,
-                                    style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14),
+                                    style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13),
                                   ),
-                                  const SizedBox(width: 8),
                                   IconButton(
                                     icon: Icon(
                                       isWatched ? Icons.star : Icons.star_border,
@@ -410,7 +516,7 @@ class _MarketPricesScreenState extends State<MarketPricesScreen> {
   }
 }
 
-// 4. Вкладка «Радар» (портфель сохраненных лотов)
+// 4. Вкладка «Радар» (Портфель отслеживаемых лотов)
 class RadarScreen extends StatelessWidget {
   final List<Map<String, String>> watchlist;
   final Function(Map<String, String>) onRemove;
