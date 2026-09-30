@@ -821,7 +821,7 @@ class _ScannerTabState extends State<ScannerTab> {
 }
 
 // ==========================================
-// 3. БАЗА ЦЕН С УНИВЕРСАЛЬНЫМ ПАРСЕРОМ
+// 3. БАЗА ЦЕН С ПАРСИНГОМ ПО СТРУКТУРЕ ТАБЛИЦЫ
 // ==========================================
 class PriceDatabaseTab extends StatefulWidget {
   const PriceDatabaseTab({super.key});
@@ -831,7 +831,6 @@ class PriceDatabaseTab extends StatefulWidget {
 }
 
 class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
-  // ИНТЕГРИРОВАННАЯ ССЫЛКА НА ВАШУ GOOGLE ТАБЛИЦУ
   final String _publicDataSourceUrl = 
       "https://docs.google.com/spreadsheets/d/1GvM6Q5PD9UH5QxWI2VSMxWiTFkR4RShc/export?format=csv";
 
@@ -855,25 +854,33 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
     });
 
     try {
-      final res = await http.get(Uri.parse(_publicDataSourceUrl)).timeout(const Duration(seconds: 10));
+      final res = await http.get(Uri.parse(_publicDataSourceUrl)).timeout(const Duration(seconds: 15));
       if (!mounted) return;
 
       if (res.statusCode == 200) {
         final bodyString = utf8.decode(res.bodyBytes);
         List<dynamic> parsedData = [];
 
-        try {
-          parsedData = jsonDecode(bodyString);
-        } catch (e) {
-          // Чтение Google Sheets (CSV)
-          List<String> lines = const LineSplitter().convert(bodyString);
-          for (int i = 1; i < lines.length; i++) {
-            List<String> parts = lines[i].split(RegExp(r',(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)'));
-            if (parts.length >= 3) {
+        List<String> lines = const LineSplitter().convert(bodyString);
+        
+        // Начинаем парсинг
+        for (int i = 1; i < lines.length; i++) {
+          List<String> parts = lines[i].split(RegExp(r',(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)'));
+          
+          // Проверяем, что в строке есть хотя бы 6 столбцов (вплоть до столбца F)
+          if (parts.length >= 6) {
+            String brand = parts[0].replaceAll('"', '').trim(); // Марка (Индекс 0)
+            String model = parts[2].replaceAll('"', '').trim(); // Модель (Индекс 2)
+            String carClass = parts[3].replaceAll('"', '').trim(); // Класс (Индекс 3)
+            String source = parts[4].replaceAll('"', '').trim(); // Откуда взять (Индекс 4)
+            String price = parts[5].replaceAll(RegExp(r'[^0-9]'), ''); // Цена (Индекс 5)
+
+            // Пропускаем пустые строки
+            if (brand.isNotEmpty || model.isNotEmpty) {
               parsedData.add({
-                "name": parts[0].replaceAll('"', '').trim(),
-                "price": parts[1].replaceAll(RegExp(r'[^0-9]'), ''), 
-                "status": parts[2].replaceAll('"', '').trim(),
+                "name": "$brand $model".trim(),
+                "price": price.isEmpty ? "0" : price,
+                "status": "$carClass • $source".trim(),
               });
             }
           }
@@ -919,19 +926,33 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
     super.dispose();
   }
 
+  // Обновленный метод для красивого отображения источников
   Widget _buildTrendIndicator(String status) {
-    Color color; IconData icon;
-    if (status.toLowerCase().contains("дефицит")) { color = Colors.redAccent; icon = Icons.local_fire_department; } 
-    else if (status.toLowerCase().contains("максимум")) { color = Colors.amberAccent; icon = Icons.star; } 
-    else if (status.toLowerCase().contains("топ")) { color = Colors.deepOrangeAccent; icon = Icons.local_fire_department; } 
-    else if (status.toLowerCase().contains("растет")) { color = Colors.white; icon = Icons.trending_up; } 
-    else { color = Colors.greenAccent; icon = Icons.trending_flat; }
+    Color color = Colors.greenAccent;
+    IconData icon = Icons.info_outline;
+    String lowerStatus = status.toLowerCase();
+
+    if (lowerStatus.contains("seasonal") || lowerStatus.contains("сезон")) {
+      color = Colors.amberAccent;
+      icon = Icons.star;
+    } else if (lowerStatus.contains("wheelspin") || lowerStatus.contains("рулетка")) {
+      color = Colors.purpleAccent;
+      icon = Icons.casino;
+    } else if (lowerStatus.contains("autoshow") || lowerStatus.contains("автосалон")) {
+      color = Colors.white54;
+      icon = Icons.storefront;
+    } else if (lowerStatus.contains("dlc") || lowerStatus.contains("car pass")) {
+      color = Colors.lightBlueAccent;
+      icon = Icons.card_giftcard;
+    }
 
     return Row(
       children: [
         Icon(icon, color: color, size: 14),
         const SizedBox(width: 4),
-        Text(status, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w500)),
+        Expanded(
+          child: Text(status, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
+        ),
       ],
     );
   }
@@ -971,8 +992,10 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
                       final car = _filteredCars[i];
                       final name = car['name']?.toString() ?? "Неизвестно";
                       final price = car['price']?.toString() ?? "0";
-                      final status = car['status']?.toString() ?? "стабильно";
-                      final formattedPrice = price.replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]} ');
+                      final status = car['status']?.toString() ?? "Неизвестно";
+                      
+                      // Форматируем цену (добавляем пробелы)
+                      final formattedPrice = price == "0" ? "???" : price.replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]} ');
 
                       return Card(
                         color: const Color(0xFF1E1E1E),
@@ -993,6 +1016,7 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
                                   ],
                                 ),
                               ),
+                              const SizedBox(width: 10),
                               Text("$formattedPrice CR", style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 14)),
                             ],
                           ),
