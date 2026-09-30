@@ -1,0 +1,32 @@
+name: Auto Update Prices
+
+on:
+  schedule:
+    - cron: '0 * * * *' # Запуск каждый час автоматически
+  workflow_dispatch:      # Кнопка для ручного запуска
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run parser
+        run: python parser.py
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name 'ForzaPriceBot'
+          git config --global user.email 'bot@github.com'
+          git add prices.json
+          git commit -m "Автообновление базы цен [skip ci]" || exit 0
+          git push
