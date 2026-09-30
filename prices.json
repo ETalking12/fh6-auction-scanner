@@ -1,0 +1,27 @@
+[
+  {
+    "name": "Ferrari 599XX Evolution",
+    "price": "15 000 000 CR",
+    "trend": "🔥 Дефицит"
+  },
+  {
+    "name": "Toyota Trueno GT Apex",
+    "price": "12 000 000 CR",
+    "trend": "🔥 Топ спрос"
+  },
+  {
+    "name": "Lamborghini Aventador SVJ",
+    "price": "20 000 000 CR",
+    "trend": "⭐ Максимум"
+  },
+  {
+    "name": "BMW M3-GTR (2002)",
+    "price": "14 500 000 CR",
+    "trend": "🔥 Дефицит"
+  },
+  {
+    "name": "Porsche Hoonigan RWB",
+    "price": "8 500 000 CR",
+    "trend": "📈 Растет"
+  }
+]
