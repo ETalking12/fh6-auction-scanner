@@ -821,7 +821,7 @@ class _ScannerTabState extends State<ScannerTab> {
 }
 
 // ==========================================
-// 3. БАЗА ЦЕН С ТОЧНЫМ ПАРСЕРОМ GOOGLE ТАБЛИЦЫ
+// 3. БАЗА ЦЕН С ДИНАМИЧЕСКИМ ПАРСЕРОМ GOOGLE ТАБЛИЦЫ
 // ==========================================
 class PriceDatabaseTab extends StatefulWidget {
   const PriceDatabaseTab({super.key});
@@ -862,29 +862,58 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
         List<dynamic> parsedData = [];
 
         List<String> lines = const LineSplitter().convert(bodyString);
-        
-        String lastKnownBrand = ""; // Память для объединенных ячеек (например, Abarth)
+        String lastKnownBrand = ""; 
 
+        // Пропускаем шапку таблицы (начинаем с i = 1)
         for (int i = 1; i < lines.length; i++) {
           List<String> parts = lines[i].split(RegExp(r',(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)'));
           
-          if (parts.length >= 8) {
+          // Нам нужно убедиться, что строка доходит хотя бы до столбца с моделью
+          if (parts.length >= 4) {
+            
+            // 1. Захватываем бренд. Если ячейка объединена, берем из памяти
             String colBrand = parts[1].replaceAll('"', '').trim();
             if (colBrand.isNotEmpty) {
-              lastKnownBrand = colBrand; // Обновляем марку, если она указана
+              lastKnownBrand = colBrand;
             }
+            String brand = lastKnownBrand;
             
-            String brand = lastKnownBrand; // Используем последнюю известную марку
+            // 2. Модель всегда на 4-й позиции (индекс 3)
             String model = parts[3].replaceAll('"', '').trim();
-            String carClass = parts[5].replaceAll('"', '').trim();
-            String source = parts[6].replaceAll('"', '').trim();
-            String price = parts[7].replaceAll(RegExp(r'[^0-9]'), ''); 
 
             if (model.isNotEmpty) {
+              
+              // 3. Собираем все непустые ячейки ПОСЛЕ модели
+              List<String> remaining = [];
+              for (int j = 4; j < parts.length; j++) {
+                String p = parts[j].replaceAll('"', '').trim();
+                if (p.isNotEmpty) remaining.add(p);
+              }
+
+              String carClass = "";
+              String source = "";
+              String price = "0";
+
+              if (remaining.isNotEmpty) {
+                // Если данные есть, цена ВСЕГДА будет последней в списке
+                if (remaining.length == 1) {
+                  price = remaining.last.replaceAll(RegExp(r'[^0-9]'), '');
+                } else {
+                  price = remaining.last.replaceAll(RegExp(r'[^0-9]'), '');
+                  // Класс всегда будет идти первым после модели
+                  carClass = remaining.first;
+                  
+                  // Все ячейки между классом и ценой — это источник
+                  if (remaining.length > 2) {
+                    source = remaining.sublist(1, remaining.length - 1).join(", ");
+                  }
+                }
+              }
+
               parsedData.add({
                 "name": "$brand $model".trim(),
                 "price": price.isEmpty ? "0" : price,
-                "status": "$carClass • $source".trim(),
+                "status": "$carClass${source.isNotEmpty ? ' • $source' : ''}".trim(),
               });
             }
           }
