@@ -12,6 +12,9 @@ List<CameraDescription> cameras = [];
 const String PLAYLIST_FEED_URL =
     "https://raw.githubusercontent.com/ETalking12/fh6-auction-scanner/main/playlist.json?v=2";
 
+const String PRICES_FEED_URL =
+    "https://raw.githubusercontent.com/ETalking12/fh6-auction-scanner/main/prices.json";
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
@@ -27,23 +30,20 @@ Future<void> main() async {
 
 class WatchlistItem {
   final String id;
-  String name;
-  int buyPrice;
-  int targetPrice;     
-  int projectedPrice;  
+  final String name;
+  final int buyPrice;
+  final int targetPrice;
   String status;
   final String dateAdded;
 
   WatchlistItem({
     required this.id, required this.name, required this.buyPrice,
-    required this.targetPrice, required this.projectedPrice, 
-    required this.status, required this.dateAdded,
+    required this.targetPrice, required this.status, required this.dateAdded,
   });
 
   Map<String, dynamic> toMap() => {
         "id": id, "name": name, "buyPrice": buyPrice,
-        "targetPrice": targetPrice, "projectedPrice": projectedPrice,
-        "status": status, "dateAdded": dateAdded,
+        "targetPrice": targetPrice, "status": status, "dateAdded": dateAdded,
       };
 
   factory WatchlistItem.fromMap(Map<String, dynamic> map) => WatchlistItem(
@@ -51,7 +51,6 @@ class WatchlistItem {
         name: map["name"]?.toString() ?? "Неизвестно",
         buyPrice: (map["buyPrice"] as num?)?.toInt() ?? 0,
         targetPrice: (map["targetPrice"] as num?)?.toInt() ?? 20000000,
-        projectedPrice: (map["projectedPrice"] as num?)?.toInt() ?? 20000000,
         status: map["status"]?.toString() ?? "HOLD",
         dateAdded: map["dateAdded"]?.toString() ?? "",
       );
@@ -97,17 +96,16 @@ class _Forza6SniperAppState extends State<Forza6SniperApp> {
     await prefs.setString("user_portfolio_list", raw);
   }
 
-  void _addQuickSnipeToPortfolio(String carName, int buyPrice, int currentMarket, int projectedValue) {
+  void _addQuickSnipeToPortfolio(String carName, int buyPrice) {
     final newItem = WatchlistItem(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      name: carName, buyPrice: buyPrice, targetPrice: currentMarket,
-      projectedPrice: projectedValue, status: "HOLD", 
-      dateAdded: "${DateTime.now().day}.${DateTime.now().month}",
+      name: carName, buyPrice: buyPrice, targetPrice: 20000000,
+      status: "HOLD", dateAdded: "Поймано ${DateTime.now().day}.${DateTime.now().month}",
     );
     setState(() => _portfolio.insert(0, newItem));
     _savePortfolio();
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("✓ Активы обновлены: $carName"), backgroundColor: Colors.green[800], duration: const Duration(seconds: 2)),
+      SnackBar(content: Text("✓ $carName добавлен в Forza6Sniper Радар!"), backgroundColor: Colors.green[800], duration: const Duration(seconds: 2)),
     );
   }
 
@@ -116,6 +114,7 @@ class _Forza6SniperAppState extends State<Forza6SniperApp> {
     final screens = [
       ScannerTab(onAddToPortfolio: _addQuickSnipeToPortfolio),
       const StrategyAdvisorTab(),
+      const MarketSearchTab(),
       WatchlistTab(portfolio: _portfolio, onUpdate: _savePortfolio),
     ];
 
@@ -130,8 +129,9 @@ class _Forza6SniperAppState extends State<Forza6SniperApp> {
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.camera_alt), label: "Сканер"),
-          BottomNavigationBarItem(icon: Icon(Icons.auto_awesome), label: "Аналитика"),
-          BottomNavigationBarItem(icon: Icon(Icons.inventory), label: "Радар"),
+          BottomNavigationBarItem(icon: Icon(Icons.auto_awesome), label: "Сезон"),
+          BottomNavigationBarItem(icon: Icon(Icons.search), label: "База Цен"),
+          BottomNavigationBarItem(icon: Icon(Icons.pie_chart_outline), label: "Радар"),
         ],
       ),
     );
@@ -139,17 +139,20 @@ class _Forza6SniperAppState extends State<Forza6SniperApp> {
 }
 
 // =======================================================
-// 1. АВТОМАТИЧЕСКИЙ СЕЗОННЫЙ СОВЕТНИК (Восстановлен)
+// 1. АВТОМАТИЧЕСКИЙ СЕЗОННЫЙ СОВЕТНИК
 // =======================================================
 class StrategyAdvisorTab extends StatefulWidget {
   const StrategyAdvisorTab({super.key});
+
   @override
   State<StrategyAdvisorTab> createState() => _StrategyAdvisorTabState();
 }
+
 class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
   Map<String, dynamic>? _playlistData;
   bool _isLoading = true;
   String _errorMsg = "";
+  
   late Timer _timer;
   String _timeRemaining = "";
 
@@ -177,8 +180,10 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
     if (daysUntilThursday == 0 && (now.hour > 14 || (now.hour == 14 && now.minute >= 30))) {
       daysUntilThursday = 7;
     }
+    
     DateTime nextThursday = DateTime.utc(now.year, now.month, now.day).add(Duration(days: daysUntilThursday));
     nextThursday = DateTime.utc(nextThursday.year, nextThursday.month, nextThursday.day, 14, 30);
+    
     Duration diff = nextThursday.difference(now);
     if (diff.isNegative) diff = const Duration(seconds: 0);
 
@@ -195,7 +200,11 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
   }
 
   Future<void> _fetchPlaylistData() async {
-    setState(() { _isLoading = true; _errorMsg = ""; });
+    setState(() {
+      _isLoading = true;
+      _errorMsg = "";
+    });
+
     try {
       final res = await http.get(Uri.parse(PLAYLIST_FEED_URL)).timeout(const Duration(seconds: 10));
       if (!mounted) return;
@@ -278,7 +287,7 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
                       _buildSpecRow("Ликвидность:", "🔥 Дефицит (Топ)"),
                       const SizedBox(height: 12),
                       const Text(
-                        "💡 Совет по снайпингу: Модель пользуется повышенным спросом в текущей серии. Скупайте лоты со скидкой и выставляйте по максимальной цене.",
+                        "💡 Совет по снайпингу: Скупайте лоты со скидкой от 20% и выставляйте по максимальной цене.",
                         style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
                       ),
                       const SizedBox(height: 16),
@@ -484,10 +493,10 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
 }
 
 // ==========================================
-// 2. СКАНЕР АУКЦИОНА
+// 2. СКАНЕР АУКЦИОНА НА GOOGLE ML KIT
 // ==========================================
 class ScannerTab extends StatefulWidget {
-  final Function(String name, int price, int marketPrice, int projectedPrice) onAddToPortfolio;
+  final Function(String name, int price) onAddToPortfolio;
   const ScannerTab({super.key, required this.onAddToPortfolio});
   @override
   State<ScannerTab> createState() => _ScannerTabState();
@@ -500,11 +509,8 @@ class _ScannerTabState extends State<ScannerTab> {
   bool _isScanning = false;
   bool _isTorchOn = false;
   
-  int _targetMarketValue = 20000000;
-  double _desiredDiscount = 0.30; 
-  
+  final String _currentSlot = "Слот 1 (Авто)";
   int _detectedPrice = 0;
-  String _detectedCarName = "";
   bool _isSnipeAlert = false;
   String _lastRawText = "Готов к сканированию...";
   String _statusBanner = "Наведите рамку на цены выкупа";
@@ -512,23 +518,7 @@ class _ScannerTabState extends State<ScannerTab> {
   @override
   void initState() {
     super.initState();
-    _loadCalibration();
     _initCamera();
-  }
-
-  Future<void> _loadCalibration() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _targetMarketValue = prefs.getInt("snipe_market_value") ?? 20000000;
-      _desiredDiscount = prefs.getDouble("snipe_discount") ?? 0.30;
-    });
-  }
-
-  Future<void> _saveCalibration(int value, double discount) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt("snipe_market_value", value);
-    await prefs.setDouble("snipe_discount", discount);
-    setState(() { _targetMarketValue = value; _desiredDiscount = discount; });
   }
 
   Future<void> _initCamera() async {
@@ -542,14 +532,19 @@ class _ScannerTabState extends State<ScannerTab> {
       _isScanning = true;
       _startScanLoop();
     } catch (e) {
+      debugPrint("Ошибка камеры: $e");
       if (mounted) setState(() => _statusBanner = "Ошибка камеры: $e");
     }
   }
 
   Future<void> _toggleTorch() async {
     if (_controller == null || !_controller!.value.isInitialized) return;
-    setState(() => _isTorchOn = !_isTorchOn);
-    await _controller!.setFlashMode(_isTorchOn ? FlashMode.torch : FlashMode.off);
+    try {
+      setState(() => _isTorchOn = !_isTorchOn);
+      await _controller!.setFlashMode(_isTorchOn ? FlashMode.torch : FlashMode.off);
+    } catch (e) {
+      debugPrint("Ошибка фонарика: $e");
+    }
   }
 
   void _startScanLoop() async {
@@ -559,63 +554,26 @@ class _ScannerTabState extends State<ScannerTab> {
         try {
           final image = await _controller!.takePicture();
           if (!mounted) break;
+
           final inputImage = InputImage.fromFilePath(image.path);
           final recognizedText = await _textRecognizer.processImage(inputImage);
+
           if (!mounted) break;
 
-          double maxY = 1.0;
-          for (TextBlock block in recognizedText.blocks) {
-            if (block.boundingBox.bottom > maxY) maxY = block.boundingBox.bottom;
-          }
-
-          String focusedText = "";
-          for (TextBlock block in recognizedText.blocks) {
-            double blockCenterY = block.boundingBox.top + (block.boundingBox.height / 2);
-            if (blockCenterY > (maxY * 0.35) && blockCenterY < (maxY * 0.65)) {
-              focusedText += block.text + " ";
-            }
-          }
-
-          final raw = focusedText.trim();
+          final raw = recognizedText.text.trim().replaceAll('\n', ' ');
           setState(() {
-            _lastRawText = raw.isEmpty ? "Пусто в рамке" : (raw.length > 35 ? "${raw.substring(0, 35)}..." : raw.replaceAll('\n', ' '));
+            _lastRawText = raw.isEmpty ? "Текст не найден" : (raw.length > 35 ? "${raw.substring(0, 35)}..." : raw);
           });
 
-          final priceRegex = RegExp(r'\b\d{1,3}(?:[., ]\d{3})*\b|\b\d+\b');
-          final priceMatches = priceRegex.allMatches(raw);
-          List<int> validPrices = [];
-          for (final match in priceMatches) {
-            String cleanNumStr = match.group(0)!.replaceAll(RegExp(r'[^0-9]'), '');
-            if (cleanNumStr.isNotEmpty) {
-              int parsedNum = int.parse(cleanNumStr);
-              if (parsedNum >= 10000 && parsedNum <= 20000000) validPrices.add(parsedNum);
-            }
-          }
-
-          final wordRegex = RegExp(r'\b[A-Za-zА-Яа-я0-9]{2,15}\b');
-          final wordMatches = wordRegex.allMatches(raw);
-          List<String> validWords = [];
-          for (final m in wordMatches) {
-            String word = m.group(0)!;
-            String upper = word.toUpperCase();
-            if (upper == "MIN" || upper == "МИН" || upper == "CR") continue;
-            if (RegExp(r'^\d+$').hasMatch(word)) {
-              int val = int.parse(word);
-              if (!((val >= 1900 && val <= 2050) || word.length == 3)) continue;
-            }
-            validWords.add(word);
-          }
-
-          String guessedName = validWords.take(4).join(" ");
-          if (guessedName.isNotEmpty) _detectedCarName = guessedName;
-
-          if (validPrices.isNotEmpty) {
-            int minPrice = validPrices.reduce((curr, next) => curr < next ? curr : next);
-            _processPrice(minPrice);
-          } else {
-            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Наведите рамку на цены выкупа"; });
+          final cleanNumbers = raw.replaceAll(RegExp(r'[^0-9]'), '');
+          final match = RegExp(r'\d{6,8}').firstMatch(cleanNumbers);
+          
+          if (match != null) {
+            int foundPrice = int.parse(match.group(0)!);
+            _processPrice(foundPrice);
           }
         } catch (e) {
+          debugPrint("ML Kit Error: $e");
           if (mounted) setState(() => _lastRawText = "Ошибка распознавания");
         } finally {
           _isProcessing = false;
@@ -626,124 +584,19 @@ class _ScannerTabState extends State<ScannerTab> {
   }
 
   void _processPrice(int price) {
-    if (price < 10000 || !mounted) return;
-    int alertThreshold = (_targetMarketValue * (1 - _desiredDiscount)).round();
+    if (price < 100000 || !mounted) return;
+
     setState(() {
       _detectedPrice = price;
-      if (price <= alertThreshold) {
+      if (price <= 6000000) {
         _isSnipeAlert = true;
-        _statusBanner = "🔥 СНАЙП! Цена: $price CR (Выгода > ${(_desiredDiscount * 100).toInt()}%)";
+        _statusBanner = "🔥 СНАЙП! Найдена низкая цена: $price CR";
         HapticFeedback.heavyImpact();
       } else {
         _isSnipeAlert = false;
-        _statusBanner = "Цена: $price CR (Маржинальность мала)";
+        _statusBanner = "Цена: $price CR (Обычная)";
       }
     });
-  }
-
-  void _showCalibrationDialog() {
-    final valController = TextEditingController(text: _targetMarketValue.toString());
-    double tempDiscount = _desiredDiscount;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setStateBuilder) {
-          return AlertDialog(
-            backgroundColor: const Color(0xFF1E1E1E),
-            title: const Text("Параметры закупки", style: TextStyle(color: Colors.white)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text("Укажите текущую среднюю стоимость лота на рынке:", style: TextStyle(color: Colors.white70, fontSize: 12)),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: valController,
-                  style: const TextStyle(color: Colors.white),
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: "Текущая рыночная цена (CR)", labelStyle: TextStyle(color: Colors.white54)),
-                ),
-                const SizedBox(height: 20),
-                Text("Желаемая скидка от рынка: ${(tempDiscount * 100).toInt()}%", style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
-                Slider(
-                  value: tempDiscount, min: 0.05, max: 0.90, divisions: 17,
-                  activeColor: Colors.greenAccent, inactiveColor: Colors.white24,
-                  onChanged: (val) => setStateBuilder(() => tempDiscount = val),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ОТМЕНА", style: TextStyle(color: Colors.white54))),
-              TextButton(
-                onPressed: () {
-                  int newVal = int.tryParse(valController.text) ?? 20000000;
-                  _saveCalibration(newVal, tempDiscount);
-                  Navigator.pop(ctx);
-                },
-                child: const Text("ПРИМЕНИТЬ", style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          );
-        }
-      ),
-    );
-  }
-
-  void _showSaveDialog(int currentPrice, String guessedName) {
-    final nameController = TextEditingController(text: guessedName);
-    final priceController = TextEditingController(text: currentPrice.toString());
-    final marketController = TextEditingController(text: _targetMarketValue.toString());
-    final projectedController = TextEditingController(text: "20000000"); 
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text("Принять на баланс", style: TextStyle(color: Colors.white)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController, style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: "Наименование лота", labelStyle: TextStyle(color: Colors.white54)),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: priceController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: "Фактическая цена покупки (CR)", labelStyle: TextStyle(color: Colors.white54)),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: marketController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: "Рыночная цена СЕЙЧАС (CR)", labelStyle: TextStyle(color: Colors.white54)),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: projectedController, style: const TextStyle(color: Colors.amberAccent), keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: "Прогноз стоимости (МАКСИМУМ)", labelStyle: TextStyle(color: Colors.amberAccent)),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ОТМЕНА", style: TextStyle(color: Colors.white54))),
-          TextButton(
-            onPressed: () {
-              String name = nameController.text.trim();
-              if (name.isEmpty) name = "Неизвестная машина";
-              int price = int.tryParse(priceController.text) ?? currentPrice;
-              int market = int.tryParse(marketController.text) ?? _targetMarketValue;
-              int projected = int.tryParse(projectedController.text) ?? 20000000;
-              
-              widget.onAddToPortfolio(name, price, market, projected);
-              Navigator.pop(ctx);
-            },
-            child: const Text("В РАДАР", style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -757,56 +610,87 @@ class _ScannerTabState extends State<ScannerTab> {
   @override
   Widget build(BuildContext context) {
     if (_controller == null || !_controller!.value.isInitialized) {
-      return Scaffold(backgroundColor: Colors.black, body: Center(child: Text(_statusBanner, style: const TextStyle(color: Colors.redAccent))));
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: _statusBanner.contains("Ошибка")
+              ? Text(_statusBanner, style: const TextStyle(color: Colors.redAccent))
+              : const CircularProgressIndicator(color: Colors.greenAccent),
+        ),
+      );
     }
-    
-    int alertThreshold = (_targetMarketValue * (1 - _desiredDiscount)).round();
-
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
           Positioned.fill(child: CameraPreview(_controller!)),
+          
           Positioned(
             top: 45, right: 20,
             child: FloatingActionButton.small(
-              heroTag: "btn1", backgroundColor: _isTorchOn ? Colors.amberAccent : Colors.black54,
-              onPressed: _toggleTorch, child: Icon(_isTorchOn ? Icons.flash_on : Icons.flash_off, color: _isTorchOn ? Colors.black : Colors.white),
+              backgroundColor: _isTorchOn ? Colors.amberAccent : Colors.black54,
+              onPressed: _toggleTorch,
+              child: Icon(
+                _isTorchOn ? Icons.flash_on : Icons.flash_off,
+                color: _isTorchOn ? Colors.black : Colors.white,
+              ),
             ),
           ),
-          Positioned(
-            top: 45, left: 20,
-            child: FloatingActionButton.extended(
-              heroTag: "btn2", backgroundColor: Colors.black54, onPressed: _showCalibrationDialog,
-              icon: const Icon(Icons.tune, color: Colors.greenAccent, size: 18),
-              label: Text("Сигнал < $alertThreshold", style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-            ),
-          ),
+
           Center(
             child: Container(
               width: 330, height: 130,
               decoration: BoxDecoration(
-                  border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white70, width: _isSnipeAlert ? 4.0 : 2.5),
-                  boxShadow: _isSnipeAlert ? [BoxShadow(color: Colors.greenAccent.withOpacity(0.6), blurRadius: 12, spreadRadius: 3)] : [],
+                  border: Border.all(
+                    color: _isSnipeAlert ? Colors.greenAccent : Colors.white70,
+                    width: _isSnipeAlert ? 4.0 : 2.5,
+                  ),
+                  boxShadow: _isSnipeAlert
+                      ? [BoxShadow(color: Colors.greenAccent.withOpacity(0.6), blurRadius: 12, spreadRadius: 3)]
+                      : [],
                   borderRadius: BorderRadius.circular(12)),
             ),
           ),
+          
           Positioned(
             bottom: 20, left: 16, right: 16,
             child: Container(
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: Colors.black.withOpacity(0.9), borderRadius: BorderRadius.circular(14), border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white24, width: 1.5)),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white24, width: 1.5),
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text("OCR видит (в рамке): $_lastRawText", style: const TextStyle(color: Colors.white60, fontSize: 11), overflow: TextOverflow.ellipsis),
+                  Row(
+                    children: [
+                      const Icon(Icons.remove_red_eye, color: Colors.greenAccent, size: 14),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          "OCR видит: $_lastRawText",
+                          style: const TextStyle(color: Colors.white60, fontSize: 11),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                   const Divider(color: Colors.white24, height: 14),
-                  Text(_statusBanner, style: TextStyle(color: _isSnipeAlert ? Colors.greenAccent : Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                  Text(
+                    _statusBanner,
+                    style: TextStyle(
+                      color: _isSnipeAlert ? Colors.greenAccent : Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
                   if (_detectedPrice > 0) ...[
                     const SizedBox(height: 10),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent),
-                      onPressed: () => _showSaveDialog(_detectedPrice, _detectedCarName),
+                      onPressed: () => widget.onAddToPortfolio(_currentSlot, _detectedPrice),
                       child: const Text("СОХРАНИТЬ В РАДАР", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
                     )
                   ]
@@ -821,7 +705,131 @@ class _ScannerTabState extends State<ScannerTab> {
 }
 
 // ==========================================
-// 3. РАДАР С УМНОЙ ГРУППИРОВКОЙ И РУЧНЫМ ВВОДОМ
+// 3. АВТОМАТИЗИРОВАННЫЙ ПОИСК ЦЕН (МАРКЕТ)
+// ==========================================
+class MarketSearchTab extends StatefulWidget {
+  const MarketSearchTab({super.key});
+
+  @override
+  State<MarketSearchTab> createState() => _MarketSearchTabState();
+}
+
+class _MarketSearchTabState extends State<MarketSearchTab> {
+  List<dynamic> _marketDatabase = [];
+  List<dynamic> _filteredCars = [];
+  bool _isLoading = true;
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchPricesFromGitHub();
+  }
+
+  Future<void> _fetchPricesFromGitHub() async {
+    try {
+      final response = await http.get(Uri.parse(PRICES_FEED_URL));
+      if (response.statusCode == 200) {
+        final List decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        if (mounted) {
+          setState(() {
+            _marketDatabase = decoded;
+            _filteredCars = decoded;
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      debugPrint("Ошибка загрузки цен: $e");
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _filterSearch(String query) {
+    final results = _marketDatabase.where((car) {
+      final name = car['name']?.toString().toLowerCase() ?? '';
+      return name.contains(query.toLowerCase());
+    }).toList();
+
+    setState(() {
+      _filteredCars = results;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF121212),
+      appBar: AppBar(
+        title: const Text("Forza6Sniper | База Цен", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF1E1E1E),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.greenAccent),
+            onPressed: () {
+              setState(() => _isLoading = true);
+              _fetchPricesFromGitHub();
+            },
+          )
+        ],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: TextField(
+              controller: _searchController,
+              onChanged: _filterSearch,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: "Поиск автомобиля по названию...",
+                hintStyle: const TextStyle(color: Colors.white54),
+                prefixIcon: const Icon(Icons.search, color: Colors.greenAccent),
+                filled: true,
+                fillColor: const Color(0xFF1E1E1E),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(color: Colors.greenAccent))
+                : _filteredCars.isEmpty
+                    ? const Center(child: Text("Список цен пуст или авто не найдено", style: TextStyle(color: Colors.white54)))
+                    : ListView.builder(
+                        itemCount: _filteredCars.length,
+                        itemBuilder: (context, index) {
+                          final car = _filteredCars[index];
+                          return Card(
+                            color: const Color(0xFF1E1E1E),
+                            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            child: ListTile(
+                              leading: const Icon(Icons.directions_car, color: Colors.greenAccent),
+                              title: Text(car['name'] ?? 'Неизвестно', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                              subtitle: Text("Статус: ${car['trend'] ?? 'Актуально'}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                              trailing: Text(
+                                car['price'] ?? '0 CR',
+                                style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 4. РАДАР (ПОРТФЕЛЬ)
 // ==========================================
 class WatchlistTab extends StatefulWidget {
   final List<WatchlistItem> portfolio;
@@ -833,316 +841,53 @@ class WatchlistTab extends StatefulWidget {
 }
 
 class _WatchlistTabState extends State<WatchlistTab> {
-  
-  final List<String> _popularCars = [
-    "2016 BENTLEY BENTAYGA", "ASTON MARTIN", "AUDI RS6", "BMW M3", "BMW M4", 
-    "BUGATTI DIVO", "CHEVROLET CORVETTE", "FERRARI 599XX", "FERRARI F40", 
-    "FORD MUSTANG", "HONDA CIVIC", "KOENIGSEGG JESKO", "LAMBORGHINI HURACAN", 
-    "LAMBORGHINI SESTO", "MCLAREN F1", "MERCEDES-AMG", "NISSAN GT-R", 
-    "PORSCHE 911 GT3", "PORSCHE TAYCAN", "TOYOTA SUPRA"
-  ];
-
-  List<String> _getSuggestions(String query) {
-    Set<String> allCars = widget.portfolio.map((e) => e.name.toUpperCase()).toSet();
-    allCars.addAll(_popularCars);
-    if (query.isEmpty) return const [];
-    return allCars.where((car) => car.contains(query.toUpperCase())).toList()..sort();
-  }
-
-  void _showManualAddDialog() {
-    TextEditingController? autoNameController;
-    final priceController = TextEditingController();
-    final currentMarketController = TextEditingController(text: "20000000");
-    final projectedController = TextEditingController(text: "20000000");
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text("Добавить лот вручную", style: TextStyle(color: Colors.white)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Autocomplete<String>(
-                optionsBuilder: (TextEditingValue textEditingValue) {
-                  return _getSuggestions(textEditingValue.text);
-                },
-                fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
-                  autoNameController = controller;
-                  return TextField(
-                    controller: controller,
-                    focusNode: focusNode,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: "Наименование лота", 
-                      labelStyle: TextStyle(color: Colors.white54),
-                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.greenAccent)),
-                    ),
-                  );
-                },
-                optionsViewBuilder: (context, onSelected, options) {
-                  return Align(
-                    alignment: Alignment.topLeft,
-                    child: Material(
-                      color: const Color(0xFF2C2C2C),
-                      elevation: 8.0,
-                      borderRadius: BorderRadius.circular(8),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 200, maxWidth: 250),
-                        child: ListView.builder(
-                          padding: EdgeInsets.zero, shrinkWrap: true,
-                          itemCount: options.length,
-                          itemBuilder: (BuildContext context, int index) {
-                            final option = options.elementAt(index);
-                            return InkWell(
-                              onTap: () => onSelected(option),
-                              child: Padding(
-                                padding: const EdgeInsets.all(12.0),
-                                child: Text(option, style: const TextStyle(color: Colors.white)),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: priceController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: "Цена закупки (CR)", labelStyle: TextStyle(color: Colors.white54), enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)), focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.greenAccent))),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: currentMarketController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: "Рынок СЕЙЧАС (CR)", labelStyle: TextStyle(color: Colors.white54), enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)), focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.greenAccent))),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: projectedController, style: const TextStyle(color: Colors.amberAccent), keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: "Прогноз / Максимум (CR)", labelStyle: TextStyle(color: Colors.amberAccent), enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)), focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.greenAccent))),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ОТМЕНА", style: TextStyle(color: Colors.white54))),
-          TextButton(
-            onPressed: () {
-              String name = autoNameController?.text.trim() ?? "";
-              if (name.isEmpty) name = "Неизвестная машина";
-              int price = int.tryParse(priceController.text) ?? 0;
-              int market = int.tryParse(currentMarketController.text) ?? 20000000;
-              int projected = int.tryParse(projectedController.text) ?? 20000000;
-              
-              final newItem = WatchlistItem(
-                id: DateTime.now().millisecondsSinceEpoch.toString(),
-                name: name, buyPrice: price, targetPrice: market,
-                projectedPrice: projected, status: "HOLD", 
-                dateAdded: "${DateTime.now().day}.${DateTime.now().month}",
-              );
-              
-              setState(() => widget.portfolio.insert(0, newItem));
-              widget.onUpdate();
-              Navigator.pop(ctx);
-            },
-            child: const Text("ДОБАВИТЬ", style: TextStyle(color: Colors.greenAccent)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showEditDialog(BuildContext context, WatchlistItem item) {
-    final nameController = TextEditingController(text: item.name);
-    final priceController = TextEditingController(text: item.buyPrice.toString());
-    final currentMarketController = TextEditingController(text: item.targetPrice.toString());
-    final projectedController = TextEditingController(text: item.projectedPrice.toString());
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text("Редактировать лот", style: TextStyle(color: Colors.white)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: nameController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: "Наименование", labelStyle: TextStyle(color: Colors.white54))),
-              const SizedBox(height: 10),
-              TextField(controller: priceController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Цена закупки (CR)", labelStyle: TextStyle(color: Colors.white54))),
-              const SizedBox(height: 10),
-              TextField(controller: currentMarketController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Рынок СЕЙЧАС (CR)", labelStyle: TextStyle(color: Colors.white54))),
-              const SizedBox(height: 10),
-              TextField(controller: projectedController, style: const TextStyle(color: Colors.amberAccent), keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Прогноз / Максимум (CR)", labelStyle: TextStyle(color: Colors.amberAccent))),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ОТМЕНА", style: TextStyle(color: Colors.white54))),
-          TextButton(
-            onPressed: () {
-              setState(() {
-                item.name = nameController.text.trim();
-                item.buyPrice = int.tryParse(priceController.text) ?? item.buyPrice;
-                item.targetPrice = int.tryParse(currentMarketController.text) ?? item.targetPrice;
-                item.projectedPrice = int.tryParse(projectedController.text) ?? item.projectedPrice;
-              });
-              widget.onUpdate();
-              Navigator.pop(ctx);
-            },
-            child: const Text("ОБНОВИТЬ", style: TextStyle(color: Colors.greenAccent)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildIndividualCard(WatchlistItem item) {
-    final currentNetProfit = (item.targetPrice * 0.85).round() - item.buyPrice;
-    final projectedNetProfit = (item.projectedPrice * 0.85).round() - item.buyPrice;
-    final roiPercent = (item.buyPrice > 0) ? ((projectedNetProfit / item.buyPrice) * 100).round() : 0;
-
-    return Dismissible(
-      key: Key(item.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20),
-        color: Colors.redAccent, child: const Icon(Icons.delete, color: Colors.white),
-      ),
-      onDismissed: (direction) {
-        setState(() { widget.portfolio.remove(item); });
-        widget.onUpdate();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Лот списан"), duration: Duration(seconds: 2)));
-      },
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E1E1E), 
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white12)
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text("Куплено: ${item.buyPrice} CR", style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Text("Тек. профит: ", style: TextStyle(color: Colors.white54, fontSize: 11)),
-                      Text("${currentNetProfit > 0 ? '+' : ''}$currentNetProfit", style: TextStyle(color: currentNetProfit >= 0 ? Colors.greenAccent : Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 11)),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      const Text("Прогноз: ", style: TextStyle(color: Colors.white54, fontSize: 11)),
-                      Text("🚀 +$projectedNetProfit", style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 11)),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  decoration: BoxDecoration(color: Colors.amber.withOpacity(0.2), borderRadius: BorderRadius.circular(6)),
-                  child: Text("ROI ~ $roiPercent%", style: const TextStyle(color: Colors.amberAccent, fontSize: 10, fontWeight: FontWeight.bold)),
-                ),
-                const SizedBox(height: 8),
-                InkWell(
-                  onTap: () {
-                    setState(() { item.status = item.status == "HOLD" ? "READY" : "HOLD"; });
-                    widget.onUpdate();
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: item.status == "READY" ? Colors.green.shade800 : Colors.grey.shade800, borderRadius: BorderRadius.circular(6)),
-                    child: Text(item.status == "READY" ? "🟢 ПРОДАТЬ" : "🟡 ОТЛЕЖКА", style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-                IconButton(
-                  padding: EdgeInsets.zero, constraints: const BoxConstraints(),
-                  icon: const Icon(Icons.edit, color: Colors.white54, size: 22),
-                  onPressed: () => _showEditDialog(context, item),
-                ),
-              ],
-            )
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    Map<String, List<WatchlistItem>> groupedPortfolio = {};
-    for (var item in widget.portfolio) {
-      String key = item.name.trim().toUpperCase();
-      if (key.isEmpty) key = "НЕИЗВЕСТНАЯ МАШИНА";
-      groupedPortfolio.putIfAbsent(key, () => []).add(item);
-    }
-    List<String> sortedKeys = groupedPortfolio.keys.toList()..sort();
-
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
-      appBar: AppBar(title: const Text("Forza6Sniper | Радар активов"), backgroundColor: const Color(0xFF1E1E1E)),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.greenAccent,
-        onPressed: _showManualAddDialog,
-        child: const Icon(Icons.add, color: Colors.black),
-      ),
+      appBar: AppBar(title: const Text("Forza6Sniper | Радар"), backgroundColor: const Color(0xFF1E1E1E)),
       body: widget.portfolio.isEmpty
-          ? const Center(child: Text("Склад пуст. Сканируйте аукцион для пополнения запасов.", style: TextStyle(color: Colors.white54)))
+          ? const Center(child: Text("Портфель пуст. Сохраняйте лоты со сканера!", style: TextStyle(color: Colors.white54)))
           : ListView.builder(
-              padding: const EdgeInsets.only(top: 10, bottom: 80),
-              itemCount: sortedKeys.length,
-              itemBuilder: (ctx, index) {
-                String carName = sortedKeys[index];
-                List<WatchlistItem> cars = groupedPortfolio[carName]!;
-
-                int totalBuy = cars.fold(0, (sum, item) => sum + item.buyPrice);
-                int avgBuyPrice = (totalBuy / cars.length).round();
-
-                int totalProjectedNet = cars.fold(0, (sum, item) {
-                  return sum + ((item.projectedPrice * 0.85).round() - item.buyPrice);
-                });
-
+              itemCount: widget.portfolio.length,
+              itemBuilder: (ctx, i) {
+                final item = widget.portfolio[i];
+                final netProfit = (item.targetPrice * 0.85).round() - item.buyPrice;
+                
                 return Card(
-                  color: const Color(0xFF161616),
-                  margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: const BorderSide(color: Colors.greenAccent, width: 0.5)
-                  ),
-                  child: Theme(
-                    data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                    child: ExpansionTile(
-                      initiallyExpanded: true,
-                      iconColor: Colors.greenAccent,
-                      collapsedIconColor: Colors.white54,
-                      title: Text(
-                        "$carName (Шт: ${cars.length})", 
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 4),
-                          Text("Средняя цена закупки: $avgBuyPrice CR", style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                          Text("Потенциал группы: +$totalProjectedNet CR", style: const TextStyle(color: Colors.amberAccent, fontSize: 12, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                      children: cars.map((item) => _buildIndividualCard(item)).toList(),
+                  color: const Color(0xFF1E1E1E),
+                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  child: ListTile(
+                    title: Text(item.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    subtitle: Text("Куплено: ${item.buyPrice} CR\nДобавлено: ${item.dateAdded}", style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                    isThreeLine: true,
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text("+$netProfit CR", style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 13)),
+                        const SizedBox(height: 4),
+                        InkWell(
+                          onTap: () {
+                            setState(() {
+                              item.status = item.status == "HOLD" ? "READY" : "HOLD";
+                            });
+                            widget.onUpdate();
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: item.status == "READY" ? Colors.green.shade800 : Colors.grey.shade800,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              item.status == "READY" ? "🟢 ГОТОВ К ПРОДАЖЕ" : "🟡 ОТЛЕЖКА",
+                              style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 );
