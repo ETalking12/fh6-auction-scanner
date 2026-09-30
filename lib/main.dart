@@ -821,7 +821,7 @@ class _ScannerTabState extends State<ScannerTab> {
 }
 
 // ==========================================
-// 3. БАЗА ЦЕН С ПАРСИНГОМ ПО СТРУКТУРЕ ТАБЛИЦЫ
+// 3. БАЗА ЦЕН (ИСПРАВЛЕННЫЙ ПАРСЕР ПОД ВАШУ ТАБЛИЦУ)
 // ==========================================
 class PriceDatabaseTab extends StatefulWidget {
   const PriceDatabaseTab({super.key});
@@ -863,19 +863,16 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
 
         List<String> lines = const LineSplitter().convert(bodyString);
         
-        // Начинаем парсинг
         for (int i = 1; i < lines.length; i++) {
           List<String> parts = lines[i].split(RegExp(r',(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)'));
           
-          // Проверяем, что в строке есть хотя бы 6 столбцов (вплоть до столбца F)
           if (parts.length >= 6) {
-            String brand = parts[0].replaceAll('"', '').trim(); // Марка (Индекс 0)
-            String model = parts[2].replaceAll('"', '').trim(); // Модель (Индекс 2)
-            String carClass = parts[3].replaceAll('"', '').trim(); // Класс (Индекс 3)
-            String source = parts[4].replaceAll('"', '').trim(); // Откуда взять (Индекс 4)
-            String price = parts[5].replaceAll(RegExp(r'[^0-9]'), ''); // Цена (Индекс 5)
+            String brand = parts.length > 1 ? parts[1].replaceAll('"', '').trim() : "";
+            String model = parts.length > 3 ? parts[3].replaceAll('"', '').trim() : "";
+            String carClass = parts.length > 5 ? parts[5].replaceAll('"', '').trim() : "";
+            String source = parts.length > 6 ? parts[6].replaceAll('"', '').trim() : "";
+            String price = parts.length > 7 ? parts[7].replaceAll(RegExp(r'[^0-9]'), '') : "0";
 
-            // Пропускаем пустые строки
             if (brand.isNotEmpty || model.isNotEmpty) {
               parsedData.add({
                 "name": "$brand $model".trim(),
@@ -926,7 +923,6 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
     super.dispose();
   }
 
-  // Обновленный метод для красивого отображения источников
   Widget _buildTrendIndicator(String status) {
     Color color = Colors.greenAccent;
     IconData icon = Icons.info_outline;
@@ -994,7 +990,6 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
                       final price = car['price']?.toString() ?? "0";
                       final status = car['status']?.toString() ?? "Неизвестно";
                       
-                      // Форматируем цену (добавляем пробелы)
                       final formattedPrice = price == "0" ? "???" : price.replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]} ');
 
                       return Card(
