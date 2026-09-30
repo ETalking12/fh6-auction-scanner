@@ -821,7 +821,7 @@ class _ScannerTabState extends State<ScannerTab> {
 }
 
 // ==========================================
-// 3. БАЗА ЦЕН С ПАРСЕРОМ GOOGLE ТАБЛИЦЫ
+// 3. БАЗА ЦЕН С ТОЧНЫМ ПАРСЕРОМ GOOGLE ТАБЛИЦЫ
 // ==========================================
 class PriceDatabaseTab extends StatefulWidget {
   const PriceDatabaseTab({super.key});
@@ -863,17 +863,24 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
 
         List<String> lines = const LineSplitter().convert(bodyString);
         
+        String lastKnownBrand = ""; // Память для объединенных ячеек (например, Abarth)
+
         for (int i = 1; i < lines.length; i++) {
           List<String> parts = lines[i].split(RegExp(r',(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)'));
           
-          if (parts.length > 5) {
-            String brand = parts[0].replaceAll('"', '').trim();    // Столбец A (Марка)
-            String model = parts[2].replaceAll('"', '').trim();    // Столбец C (Модель)
-            String carClass = parts[3].replaceAll('"', '').trim(); // Столбец D (Класс)
-            String source = parts[4].replaceAll('"', '').trim();   // Столбец E (Источник)
-            String price = parts[5].replaceAll(RegExp(r'[^0-9]'), ''); // Столбец F (Цена)
+          if (parts.length >= 8) {
+            String colBrand = parts[1].replaceAll('"', '').trim();
+            if (colBrand.isNotEmpty) {
+              lastKnownBrand = colBrand; // Обновляем марку, если она указана
+            }
+            
+            String brand = lastKnownBrand; // Используем последнюю известную марку
+            String model = parts[3].replaceAll('"', '').trim();
+            String carClass = parts[5].replaceAll('"', '').trim();
+            String source = parts[6].replaceAll('"', '').trim();
+            String price = parts[7].replaceAll(RegExp(r'[^0-9]'), ''); 
 
-            if (brand.isNotEmpty || model.isNotEmpty) {
+            if (model.isNotEmpty) {
               parsedData.add({
                 "name": "$brand $model".trim(),
                 "price": price.isEmpty ? "0" : price,
@@ -937,9 +944,12 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
     } else if (lowerStatus.contains("autoshow") || lowerStatus.contains("автосалон")) {
       color = Colors.white54;
       icon = Icons.storefront;
-    } else if (lowerStatus.contains("dlc") || lowerStatus.contains("car pass")) {
+    } else if (lowerStatus.contains("dlc") || lowerStatus.contains("car pass") || lowerStatus.contains("包")) {
       color = Colors.lightBlueAccent;
       icon = Icons.card_giftcard;
+    } else if (lowerStatus.contains("collection") || lowerStatus.contains("коллекци")) {
+      color = Colors.pinkAccent;
+      icon = Icons.collections;
     }
 
     return Row(
