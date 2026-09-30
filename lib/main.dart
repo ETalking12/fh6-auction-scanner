@@ -821,7 +821,7 @@ class _ScannerTabState extends State<ScannerTab> {
 }
 
 // ==========================================
-// 3. БАЗА ЦЕН (БРОНЕБОЙНЫЙ АЛГОРИТМ ЧТЕНИЯ ТАБЛИЦ)
+// 3. БАЗА ЦЕН С ТОЧНЫМ ПАРСЕРОМ GOOGLE ТАБЛИЦЫ
 // ==========================================
 class PriceDatabaseTab extends StatefulWidget {
   const PriceDatabaseTab({super.key});
@@ -864,47 +864,27 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
         List<String> lines = const LineSplitter().convert(bodyString);
         String lastKnownBrand = ""; 
 
-        // Пропускаем шапку таблицы
+        // Пропускаем шапку таблицы (начинаем с i = 1)
         for (int i = 1; i < lines.length; i++) {
-          // Простое разбиение по запятым
-          List<String> parts = lines[i].split(',');
+          // Разбиваем CSV, корректно обрабатывая запятые внутри кавычек
+          List<String> parts = lines[i].split(RegExp(r',(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)'));
           
-          // Мы точно знаем, что до Класса индексы жесткие: 1, 3, 5
-          if (parts.length >= 6) { 
+          // Проверяем, что индексов хватает до столбца с ценой (индекс 7)
+          if (parts.length >= 8) {
             String colBrand = parts[1].replaceAll('"', '').trim();
-            if (colBrand.isNotEmpty) lastKnownBrand = colBrand;
-            String brand = lastKnownBrand;
+            if (colBrand.isNotEmpty) {
+              lastKnownBrand = colBrand; // Память для объединенных ячеек марок
+            }
             
+            String brand = lastKnownBrand;
             String model = parts[3].replaceAll('"', '').trim();
             String carClass = parts[5].replaceAll('"', '').trim();
+            String source = parts[6].replaceAll('"', '').trim();
+            
+            // Забираем цену строго из 7-го индекса
+            String price = parts[7].replaceAll(RegExp(r'[^0-9]'), ''); 
 
             if (model.isNotEmpty) {
-              // Собираем весь "хвост" строки после класса
-              List<String> tailElements = [];
-              for (int j = 6; j < parts.length; j++) {
-                String p = parts[j].replaceAll('"', '').trim();
-                if (p.isNotEmpty) tailElements.add(p);
-              }
-
-              String price = "0";
-              String source = "";
-
-              if (tailElements.isNotEmpty) {
-                // Берем самый последний элемент из хвоста
-                String lastEl = tailElements.last;
-                // Убираем всё, кроме цифр, чтобы проверить, цена ли это
-                String digitsOnly = lastEl.replaceAll(RegExp(r'[^0-9]'), '');
-                
-                // Если элемент состоит преимущественно из цифр — это наша цена
-                if (digitsOnly.isNotEmpty && digitsOnly.length >= (lastEl.length / 2)) {
-                  price = digitsOnly;
-                  tailElements.removeLast(); // Удаляем цену из хвоста
-                }
-                
-                // Всё, что осталось в хвосте — это источник (даже если он был разбит запятыми!)
-                source = tailElements.join(', ');
-              }
-
               parsedData.add({
                 "name": "$brand $model".trim(),
                 "price": price.isEmpty ? "0" : price,
