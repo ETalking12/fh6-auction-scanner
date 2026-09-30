@@ -733,7 +733,7 @@ class _ScannerTabState extends State<ScannerTab> {
               String name = nameController.text.trim();
               if (name.isEmpty) name = "Неизвестная машина";
               int price = int.tryParse(priceController.text) ?? currentPrice;
-              int market = int.tryParse(currentMarketController.text) ?? _targetMarketValue;
+              int market = int.tryParse(marketController.text) ?? _targetMarketValue;
               int projected = int.tryParse(projectedController.text) ?? 20000000;
               
               widget.onAddToPortfolio(name, price, market, projected);
@@ -864,22 +864,20 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
         List<String> lines = const LineSplitter().convert(bodyString);
         String lastKnownBrand = ""; 
 
-        // Пропускаем шапку таблицы (начинаем с i = 1)
+        // Пропускаем шапку таблицы
         for (int i = 1; i < lines.length; i++) {
-          // Используем обычный сплит, чтобы без потерь захватить весь "хвост" строки
           List<String> parts = lines[i].split(',');
           
           if (parts.length >= 4) {
             String colBrand = parts[1].replaceAll('"', '').trim();
             if (colBrand.isNotEmpty) {
-              lastKnownBrand = colBrand; // Запоминаем марку для объединенных ячеек
+              lastKnownBrand = colBrand;
             }
             
             String brand = lastKnownBrand;
             String model = parts[3].replaceAll('"', '').trim();
 
             if (model.isNotEmpty) {
-              // Собираем весь остаток строки после Модели (отбрасывая пустые ячейки)
               List<String> tail = [];
               for (int j = 4; j < parts.length; j++) {
                 String p = parts[j].replaceAll('"', '').trim();
@@ -897,21 +895,18 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
               String source = "";
 
               if (tail.isNotEmpty) {
-                // Проверяем последний элемент на цену (если там в основном цифры - это цена)
                 String lastEl = tail.last;
                 String digitsOnly = lastEl.replaceAll(RegExp(r'[^0-9]'), '');
                 if (digitsOnly.isNotEmpty && digitsOnly.length >= (lastEl.length / 2)) {
                   price = digitsOnly;
-                  tail.removeLast(); // Удаляем цену, чтобы остался только источник
+                  tail.removeLast(); 
                 }
                 
-                // Теперь первый элемент - это Класс авто (например, D 100)
                 if (tail.isNotEmpty) {
                   carClass = tail.first;
-                  tail.removeAt(0); // Удаляем класс
+                  tail.removeAt(0); 
                 }
                 
-                // Всё, что осталось между классом и ценой - это Источник
                 if (tail.isNotEmpty) {
                   source = tail.join(', ');
                 }
