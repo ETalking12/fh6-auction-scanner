@@ -733,7 +733,7 @@ class _ScannerTabState extends State<ScannerTab> {
               String name = nameController.text.trim();
               if (name.isEmpty) name = "Неизвестная машина";
               int price = int.tryParse(priceController.text) ?? currentPrice;
-              int market = int.tryParse(marketController.text) ?? _targetMarketValue;
+              int market = int.tryParse(currentMarketController.text) ?? _targetMarketValue;
               int projected = int.tryParse(projectedController.text) ?? 20000000;
               
               widget.onAddToPortfolio(name, price, market, projected);
@@ -821,7 +821,7 @@ class _ScannerTabState extends State<ScannerTab> {
 }
 
 // ==========================================
-// 3. БАЗА ЦЕН С ТОЧНЫМ ПАРСЕРОМ GOOGLE ТАБЛИЦЫ
+// 3. БАЗА ЦЕН С АДАПТИВНЫМ ПАРСЕРОМ GOOGLE ТАБЛИЦ
 // ==========================================
 class PriceDatabaseTab extends StatefulWidget {
   const PriceDatabaseTab({super.key});
@@ -866,25 +866,57 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
 
         // Пропускаем шапку таблицы (начинаем с i = 1)
         for (int i = 1; i < lines.length; i++) {
-          // Разбиваем CSV, корректно обрабатывая запятые внутри кавычек
-          List<String> parts = lines[i].split(RegExp(r',(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)'));
+          // Используем обычный сплит, чтобы без потерь захватить весь "хвост" строки
+          List<String> parts = lines[i].split(',');
           
-          // Проверяем, что индексов хватает до столбца с ценой (индекс 7)
-          if (parts.length >= 8) {
+          if (parts.length >= 4) {
             String colBrand = parts[1].replaceAll('"', '').trim();
             if (colBrand.isNotEmpty) {
-              lastKnownBrand = colBrand; // Память для объединенных ячеек марок
+              lastKnownBrand = colBrand; // Запоминаем марку для объединенных ячеек
             }
             
             String brand = lastKnownBrand;
             String model = parts[3].replaceAll('"', '').trim();
-            String carClass = parts[5].replaceAll('"', '').trim();
-            String source = parts[6].replaceAll('"', '').trim();
-            
-            // Забираем цену строго из 7-го индекса
-            String price = parts[7].replaceAll(RegExp(r'[^0-9]'), ''); 
 
             if (model.isNotEmpty) {
+              // Собираем весь остаток строки после Модели (отбрасывая пустые ячейки)
+              List<String> tail = [];
+              for (int j = 4; j < parts.length; j++) {
+                String p = parts[j].replaceAll('"', '').trim();
+                if (p.isNotEmpty) tail.add(p);
+              }
+
+              // Очищаем хвост от системного мусора (TRUE/FALSE)
+              while (tail.isNotEmpty && 
+                    (tail.last.toUpperCase() == 'TRUE' || tail.last.toUpperCase() == 'FALSE')) {
+                tail.removeLast();
+              }
+
+              String price = "0";
+              String carClass = "";
+              String source = "";
+
+              if (tail.isNotEmpty) {
+                // Проверяем последний элемент на цену (если там в основном цифры - это цена)
+                String lastEl = tail.last;
+                String digitsOnly = lastEl.replaceAll(RegExp(r'[^0-9]'), '');
+                if (digitsOnly.isNotEmpty && digitsOnly.length >= (lastEl.length / 2)) {
+                  price = digitsOnly;
+                  tail.removeLast(); // Удаляем цену, чтобы остался только источник
+                }
+                
+                // Теперь первый элемент - это Класс авто (например, D 100)
+                if (tail.isNotEmpty) {
+                  carClass = tail.first;
+                  tail.removeAt(0); // Удаляем класс
+                }
+                
+                // Всё, что осталось между классом и ценой - это Источник
+                if (tail.isNotEmpty) {
+                  source = tail.join(', ');
+                }
+              }
+
               parsedData.add({
                 "name": "$brand $model".trim(),
                 "price": price.isEmpty ? "0" : price,
