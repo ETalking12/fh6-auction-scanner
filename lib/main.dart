@@ -821,7 +821,7 @@ class _ScannerTabState extends State<ScannerTab> {
 }
 
 // ==========================================
-// 3. БАЗА ЦЕН (ИСПРАВЛЕННЫЙ ПАРСЕР ПОД ВАШУ ТАБЛИЦУ)
+// 3. БАЗА ЦЕН С ПАРСЕРОМ GOOGLE ТАБЛИЦЫ
 // ==========================================
 class PriceDatabaseTab extends StatefulWidget {
   const PriceDatabaseTab({super.key});
@@ -866,12 +866,12 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
         for (int i = 1; i < lines.length; i++) {
           List<String> parts = lines[i].split(RegExp(r',(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)'));
           
-          if (parts.length >= 6) {
-            String brand = parts.length > 1 ? parts[1].replaceAll('"', '').trim() : "";
-            String model = parts.length > 3 ? parts[3].replaceAll('"', '').trim() : "";
-            String carClass = parts.length > 5 ? parts[5].replaceAll('"', '').trim() : "";
-            String source = parts.length > 6 ? parts[6].replaceAll('"', '').trim() : "";
-            String price = parts.length > 7 ? parts[7].replaceAll(RegExp(r'[^0-9]'), '') : "0";
+          if (parts.length > 5) {
+            String brand = parts[0].replaceAll('"', '').trim();    // Столбец A (Марка)
+            String model = parts[2].replaceAll('"', '').trim();    // Столбец C (Модель)
+            String carClass = parts[3].replaceAll('"', '').trim(); // Столбец D (Класс)
+            String source = parts[4].replaceAll('"', '').trim();   // Столбец E (Источник)
+            String price = parts[5].replaceAll(RegExp(r'[^0-9]'), ''); // Столбец F (Цена)
 
             if (brand.isNotEmpty || model.isNotEmpty) {
               parsedData.add({
