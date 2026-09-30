@@ -28,5 +28,5 @@ jobs:
           git config --global user.name 'ForzaPriceBot'
           git config --global user.email 'bot@github.com'
           git add prices.json
-          git commit -m "Автообновление базы цен [skip ci]" || exit 0
-          git push
+          git diff --quiet && git diff --staged --quiet || git commit -m "Автообновление базы цен [skip ci]"
+          git push || echo "Нет изменений для отправки"
