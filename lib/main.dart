@@ -31,17 +31,23 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 0;
+  int _currentIndex = 2; // Открываем Базу Цен по умолчанию
 
-  // Список избранных/отслеживаемых машин для Радара (портфель)
+  // Общий список отслеживаемых машин (Портфель / Радар)
   final List<Map<String, String>> _watchlist = [];
 
   void _toggleWatchlist(Map<String, String> car) {
     setState(() {
       if (_watchlist.any((item) => item['name'] == car['name'])) {
         _watchlist.removeWhere((item) => item['name'] == car['name']);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Удалено из радара: ${car['name']}'), duration: const Duration(seconds: 1)),
+        );
       } else {
         _watchlist.add(car);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Добавлено в радар: ${car['name']}'), duration: const Duration(seconds: 1)),
+        );
       }
     });
   }
@@ -49,7 +55,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     final List<Widget> screens = [
-      ScannerScreen(onToggleWatch: _toggleWatchlist, watchlist: _watchlist),
+      const ScannerScreen(),
       const SeasonScreen(),
       MarketPricesScreen(onToggleWatch: _toggleWatchlist, watchlist: _watchlist),
       RadarScreen(watchlist: _watchlist, onRemove: _toggleWatchlist),
@@ -80,11 +86,15 @@ class _MainScreenState extends State<MainScreen> {
 }
 
 // 1. Вкладка «Сканер»
-class ScannerScreen extends StatelessWidget {
-  final Function(Map<String, String>) onToggleWatch;
-  final List<Map<String, String>> watchlist;
+class ScannerScreen extends StatefulWidget {
+  const ScannerScreen({super.key});
 
-  const ScannerScreen({super.key, required this.onToggleWatch, required this.watchlist});
+  @override
+  State<ScannerScreen> createState() => _ScannerScreenState();
+}
+
+class _ScannerScreenState extends State<ScannerScreen> {
+  bool _isScanning = false;
 
   @override
   Widget build(BuildContext context) {
@@ -98,13 +108,30 @@ class ScannerScreen extends StatelessWidget {
           padding: const EdgeInsets.all(20.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
-              Icon(Icons.radar, size: 64, color: Colors.greenAccent),
-              SizedBox(height: 16),
+            children: [
+              Icon(
+                Icons.radar,
+                size: 80,
+                color: _isScanning ? Colors.greenAccent : Colors.grey,
+              ),
+              const SizedBox(height: 24),
               Text(
-                'Сканирование аукциона в реальном времени...',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: Colors.white70),
+                _isScanning ? 'Сканирование аукциона активно...' : 'Снайпер приостановлен',
+                style: TextStyle(fontSize: 18, color: _isScanning ? Colors.greenAccent : Colors.white70),
+              ),
+              const SizedBox(height: 30),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _isScanning ? Colors.redAccent : Colors.green,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                onPressed: () {
+                  setState(() {
+                    _isScanning = !_isScanning;
+                  });
+                },
+                icon: Icon(_isScanning ? Icons.stop : Icons.play_arrow),
+                label: Text(_isScanning ? 'Остановить снайпер' : 'Запустить снайпер', style: const TextStyle(fontSize: 16)),
               ),
             ],
           ),
@@ -115,21 +142,37 @@ class ScannerScreen extends StatelessWidget {
 }
 
 // 2. Вкладка «Сезон»
-class SeasonScreen extends StatelessWidget {
+class SeasonScreen StatelessWidget {
   const SeasonScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final List<Map<String, String>> seasonRewards = [
+      {"name": "2021 Ford Mustang Mach-E", "points": "20 очков", "type": "Сезонный эксклюзив"},
+      {"name": "Lamborghini Aventador SVJ", "points": "40 очков", "type": "Главная награда"},
+      {"name": "Toyota Trueno GT Apex", "points": "80 очков", "type": "Прогресс серии"},
+    ];
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E1E1E),
         title: const Text('Сезонный советник'),
       ),
-      body: const Center(
-        child: Text(
-          'Актуальные награды текущего сезона Forza Horizon',
-          style: TextStyle(fontSize: 16, color: Colors.white70),
-        ),
+      body: ListView.builder(
+        itemCount: seasonRewards.length,
+        itemBuilder: (context, index) {
+          final reward = seasonRewards[index];
+          return Card(
+            color: const Color(0xFF1E1E1E),
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: ListTile(
+              leading: const Icon(Icons.emoji_events, color: Colors.amber),
+              title: Text(reward['name']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              subtitle: Text(reward['type']!, style: const TextStyle(color: Colors.greenAccent)),
+              trailing: Text(reward['points']!, style: const TextStyle(color: Colors.white70)),
+            ),
+          );
+        },
       ),
     );
   }
@@ -162,12 +205,10 @@ class _MarketPricesScreenState extends State<MarketPricesScreen> {
       _isLoading = true;
     });
 
-    // Используем стабильную прямую ссылку GitHub через /raw/main/
     final url = Uri.parse('https://github.com/ETalking12/fh6-auction-scanner/raw/main/prices.json');
 
     try {
       final response = await http.get(url);
-
       if (response.statusCode == 200) {
         List<dynamic> data = json.decode(response.body);
         setState(() {
@@ -265,9 +306,8 @@ class _MarketPricesScreenState extends State<MarketPricesScreen> {
                                 children: [
                                   Text(
                                     mapCar['price']!,
-                                    style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14),
+                                    style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13),
                                   ),
-                                  const SizedBox(width: 8),
                                   IconButton(
                                     icon: Icon(
                                       isWatched ? Icons.star : Icons.star_border,
@@ -288,7 +328,7 @@ class _MarketPricesScreenState extends State<MarketPricesScreen> {
   }
 }
 
-// 4. Вкладка «Радар» (портфель / отслеживаемое)
+// 4. Вкладка «Радар» (Портфель отслеживаемых лотов)
 class RadarScreen extends StatelessWidget {
   final List<Map<String, String>> watchlist;
   final Function(Map<String, String>) onRemove;
@@ -305,7 +345,7 @@ class RadarScreen extends StatelessWidget {
       body: watchlist.isEmpty
           ? const Center(
               child: Text(
-                'Портфель пуст. Сохраняйте лоты со вкладки "База Цен"!',
+                'Портфель пуст. Сохраняйте лоты зі вкладки "База Цен"!',
                 style: TextStyle(color: Colors.grey),
                 textAlign: TextAlign.center,
               ),
@@ -331,7 +371,7 @@ class RadarScreen extends StatelessWidget {
                       children: [
                         Text(
                           car['price'] ?? '',
-                          style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14),
+                          style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13),
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete, color: Colors.redAccent),
