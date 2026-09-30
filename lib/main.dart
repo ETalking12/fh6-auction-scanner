@@ -116,7 +116,7 @@ class _Forza6SniperAppState extends State<Forza6SniperApp> {
     final screens = [
       ScannerTab(onAddToPortfolio: _addQuickSnipeToPortfolio),
       const StrategyAdvisorTab(),
-      const MarketPricesTab(), // <-- Добавлена вкладка «База Цен»
+      const PriceDatabaseTab(),
       WatchlistTab(portfolio: _portfolio, onUpdate: _savePortfolio),
     ];
 
@@ -132,7 +132,7 @@ class _Forza6SniperAppState extends State<Forza6SniperApp> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.camera_alt), label: "Сканер"),
           BottomNavigationBarItem(icon: Icon(Icons.auto_awesome), label: "Аналитика"),
-          BottomNavigationBarItem(icon: Icon(Icons.search), label: "База Цен"), // <-- Кнопка в навигации
+          BottomNavigationBarItem(icon: Icon(Icons.search), label: "База Цен"),
           BottomNavigationBarItem(icon: Icon(Icons.inventory), label: "Радар"),
         ],
       ),
@@ -485,141 +485,8 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
   }
 }
 
-// =======================================================
-// 2. ДОБАВЛЕННАЯ ВКЛАДКА «БАЗА ЦЕН» (GitHub JSON)
-// =======================================================
-class MarketPricesTab extends StatefulWidget {
-  const MarketPricesTab({super.key});
-
-  @override
-  State<MarketPricesTab> createState() => _MarketPricesTabState();
-}
-
-class _MarketPricesTabState extends State<MarketPricesTab> {
-  List<dynamic> _cars = [];
-  bool _isLoading = false;
-  String _searchQuery = '';
-
-  @override
-  void initState() {
-    super.initState();
-    fetchPrices();
-  }
-
-  Future<void> fetchPrices() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    // Стабильная прямая ссылка GitHub, обходящая ошибки 404
-    final url = Uri.parse('https://github.com/ETalking12/fh6-auction-scanner/raw/main/prices.json');
-
-    try {
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        List<dynamic> data = json.decode(utf8.decode(response.bodyBytes));
-        setState(() {
-          _cars = data;
-          _isLoading = false;
-        });
-      } else {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final filteredCars = _cars.where((car) {
-      final name = car['name'].toString().toLowerCase();
-      return name.contains(_searchQuery.toLowerCase());
-    }).toList();
-
-    return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('База Цен Аукциона', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.greenAccent),
-            onPressed: fetchPrices,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: TextField(
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
-              decoration: InputDecoration(
-                hintText: 'Поиск автомобиля по названию...',
-                hintStyle: const TextStyle(color: Colors.grey),
-                prefixIcon: const Icon(Icons.search, color: Colors.greenAccent),
-                filled: true,
-                fillColor: const Color(0xFF1E1E1E),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: Colors.greenAccent))
-                : filteredCars.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'Список цен пуст или авто не найдено',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: filteredCars.length,
-                        itemBuilder: (context, index) {
-                          final car = filteredCars[index];
-                          return Card(
-                            color: const Color(0xFF1E1E1E),
-                            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: const BorderSide(color: Colors.white10)),
-                            child: ListTile(
-                              title: Text(
-                                car['name'] ?? 'Неизвестно',
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                              ),
-                              subtitle: Text(
-                                car['trend'] ?? '',
-                                style: const TextStyle(color: Colors.greenAccent, fontSize: 11),
-                              ),
-                              trailing: Text(
-                                car['price'] ?? '0 CR',
-                                style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 13),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ==========================================
-// 3. СКАНЕР АУКЦИОНА
+// 2. СКАНЕР АУКЦИОНА
 // ==========================================
 class ScannerTab extends StatefulWidget {
   final Function(String name, int price, int marketPrice, int projectedPrice) onAddToPortfolio;
@@ -793,9 +660,7 @@ class _ScannerTabState extends State<ScannerTab> {
                 const Text("Укажите текущую среднюю стоимость лота на рынке:", style: TextStyle(color: Colors.white70, fontSize: 12)),
                 const SizedBox(height: 10),
                 TextField(
-                  controller: valController,
-                  style: const TextStyle(color: Colors.white),
-                  keyboardType: TextInputType.number,
+                  controller: valController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number,
                   decoration: const InputDecoration(labelText: "Текущая рыночная цена (CR)", labelStyle: TextStyle(color: Colors.white54)),
                 ),
                 const SizedBox(height: 20),
@@ -948,6 +813,193 @@ class _ScannerTabState extends State<ScannerTab> {
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 3. БАЗА ЦЕН С УНИВЕРСАЛЬНЫМ ПАРСЕРОМ
+// ==========================================
+class PriceDatabaseTab extends StatefulWidget {
+  const PriceDatabaseTab({super.key});
+
+  @override
+  State<PriceDatabaseTab> createState() => _PriceDatabaseTabState();
+}
+
+class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
+  // ИНТЕГРИРОВАННАЯ ССЫЛКА НА ВАШУ GOOGLE ТАБЛИЦУ
+  final String _publicDataSourceUrl = 
+      "https://docs.google.com/spreadsheets/d/1GvM6Q5PD9UH5QxWI2VSMxWiTFkR4RShc/export?format=csv";
+
+  List<dynamic> _allCars = [];
+  List<dynamic> _filteredCars = [];
+  bool _isLoading = true;
+  String _errorMsg = "";
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchMarketData();
+    _searchController.addListener(_filterCars);
+  }
+
+  Future<void> _fetchMarketData() async {
+    setState(() {
+      _isLoading = true;
+      _errorMsg = "";
+    });
+
+    try {
+      final res = await http.get(Uri.parse(_publicDataSourceUrl)).timeout(const Duration(seconds: 10));
+      if (!mounted) return;
+
+      if (res.statusCode == 200) {
+        final bodyString = utf8.decode(res.bodyBytes);
+        List<dynamic> parsedData = [];
+
+        try {
+          parsedData = jsonDecode(bodyString);
+        } catch (e) {
+          // Чтение Google Sheets (CSV)
+          List<String> lines = const LineSplitter().convert(bodyString);
+          for (int i = 1; i < lines.length; i++) {
+            List<String> parts = lines[i].split(RegExp(r',(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)'));
+            if (parts.length >= 3) {
+              parsedData.add({
+                "name": parts[0].replaceAll('"', '').trim(),
+                "price": parts[1].replaceAll(RegExp(r'[^0-9]'), ''), 
+                "status": parts[2].replaceAll('"', '').trim(),
+              });
+            }
+          }
+        }
+
+        setState(() {
+          _allCars = parsedData;
+          _filteredCars = parsedData;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _errorMsg = "Не удалось загрузить базу (Код: ${res.statusCode})";
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMsg = "Нет связи с источником данных";
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _filterCars() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      if (query.isEmpty) {
+        _filteredCars = _allCars;
+      } else {
+        _filteredCars = _allCars.where((car) {
+          final name = car['name']?.toString().toLowerCase() ?? "";
+          return name.contains(query);
+        }).toList();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Widget _buildTrendIndicator(String status) {
+    Color color; IconData icon;
+    if (status.toLowerCase().contains("дефицит")) { color = Colors.redAccent; icon = Icons.local_fire_department; } 
+    else if (status.toLowerCase().contains("максимум")) { color = Colors.amberAccent; icon = Icons.star; } 
+    else if (status.toLowerCase().contains("топ")) { color = Colors.deepOrangeAccent; icon = Icons.local_fire_department; } 
+    else if (status.toLowerCase().contains("растет")) { color = Colors.white; icon = Icons.trending_up; } 
+    else { color = Colors.greenAccent; icon = Icons.trending_flat; }
+
+    return Row(
+      children: [
+        Icon(icon, color: color, size: 14),
+        const SizedBox(width: 4),
+        Text(status, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w500)),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF121212),
+      appBar: AppBar(
+        title: const Text("База Цен Аукциона", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF1E1E1E), elevation: 0,
+        actions: [IconButton(icon: const Icon(Icons.refresh, color: Colors.greenAccent), onPressed: _isLoading ? null : _fetchMarketData)],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: TextField(
+              controller: _searchController,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: "Поиск автомобиля по названию...",
+                hintStyle: const TextStyle(color: Colors.white54),
+                prefixIcon: const Icon(Icons.search, color: Colors.greenAccent),
+                filled: true, fillColor: const Color(0xFF1E1E1E),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              ),
+            ),
+          ),
+          Expanded(
+            child: _isLoading ? const Center(child: CircularProgressIndicator(color: Colors.greenAccent))
+                : _errorMsg.isNotEmpty ? Center(child: Text(_errorMsg, style: const TextStyle(color: Colors.redAccent)))
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: _filteredCars.length,
+                    itemBuilder: (ctx, i) {
+                      final car = _filteredCars[i];
+                      final name = car['name']?.toString() ?? "Неизвестно";
+                      final price = car['price']?.toString() ?? "0";
+                      final status = car['status']?.toString() ?? "стабильно";
+                      final formattedPrice = price.replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]} ');
+
+                      return Card(
+                        color: const Color(0xFF1E1E1E),
+                        margin: const EdgeInsets.only(bottom: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                    const SizedBox(height: 6),
+                                    _buildTrendIndicator(status),
+                                  ],
+                                ),
+                              ),
+                              Text("$formattedPrice CR", style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
