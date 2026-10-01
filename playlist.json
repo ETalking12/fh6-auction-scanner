@@ -1,14 +1,14 @@
 {
-  "current_season": "AUTUMN",
-  "series_number": "Series 12: Японский Легенды",
-  "series_rewards": "80 PTS: 2020 Nissan GT-R NISMO (R35), 160 PTS: 1998 Toyota Supra RZ",
+  "current_season": "WINTER",
+  "series_number": "Series 55",
+  "series_rewards": "1998 Subaru Impreza 22B-STI Version",
   "cars_20pts": [
-    {"name": "1995 Mazda RX-7 Spirit R", "est_value": "8M CR"},
-    {"name": "2002 Honda NSX-R", "est_value": "12M CR"}
+    {"name": "2019 Porsche 911 Carrera S", "est_value": "цены нет"},
+    {"name": "2015 Ferrari 488 GTB", "est_value": "цены нет"}
   ],
   "cars_40pts": [
-    {"name": "1997 Nissan Skyline GT-R V-Spec (R33)", "est_value": "18M CR"},
-    {"name": "2005 Subaru Impreza WRX STI", "est_value": "10M CR"}
+    {"name": "1998 Subaru Impreza 22B-STI Version", "est_value": "цены нет"},
+    {"name": "2018 Mercedes-AMG GT 4-Door Coupe", "est_value": "цены нет"}
   ],
-  "trading_advice": "Снайпинг на аукционе: сразу после сброса серии (четверг, 14:30 UTC) выставляй 20 PTS машины по минимальной цене выкупа, пока рынок не насытился. 40 PTS машины (особенно Skyline R33) держи 3-4 дня — их стоимость вырастет на 30-40% к концу сезона. Избегай покупки Supra RZ за 160 PTS, если не планируешь ездить — её перепродажа даст максимум 25M CR, а вложение очков не окупится."
+  "trading_advice": "Снайпинг 22B-STI: ищите лоты с выкупом сразу после открытия сезона, пока конкуренция низкая; для 911 Carrera S и 488 GTB проверяйте аукцион в первые 10 минут после сброса наград."
 }
