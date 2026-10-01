@@ -1,20 +1,14 @@
 {
-  "current_season": "Winter",
-  "series_number": "Series 5: Британский Автопром",
-  "series_rewards": "Серия 5 (80 PTS / 160 PTS): Bentley Continental GT Speed '25 и Aston Martin Valhalla '19",
+  "current_season": "AUTUMN",
+  "series_number": "Series 12: Японский Легенды",
+  "series_rewards": "80 PTS: 2020 Nissan GT-R NISMO (R35), 160 PTS: 1998 Toyota Supra RZ",
   "cars_20pts": [
-    {
-      "name": "2006 Vauxhall Astra VXR",
-      "season": "Winter",
-      "est_value": "20M CR"
-    }
+    {"name": "1995 Mazda RX-7 Spirit R", "est_value": "8M CR"},
+    {"name": "2002 Honda NSX-R", "est_value": "12M CR"}
   ],
   "cars_40pts": [
-    {
-      "name": "2016 Bentley Bentayga",
-      "season": "Winter",
-      "est_value": "20M CR"
-    }
+    {"name": "1997 Nissan Skyline GT-R V-Spec (R33)", "est_value": "18M CR"},
+    {"name": "2005 Subaru Impreza WRX STI", "est_value": "10M CR"}
   ],
-  "trading_advice": "Снайпинг в зимнем сезоне Series 5: обе награды (Vauxhall Astra VXR и Bentley Bentayga) имеют высокий спрос из-за редкости. Рекомендуется проверять аукцион в первые часы после смены сезона (четверг, 14:30 UTC) и в выходные вечером. Устанавливайте максимальную ставку на 10-15% выше средней рыночной цены, чтобы обойти конкурентов. Для Astra VXR ищите лоты с низким пробегом и без тюнинга — они ценятся коллекционерами. Bentayga часто выставляют с апгрейдами, что снижает цену; выбирайте стоковые версии. Если не успеваете выиграть, используйте функцию 'Купить сейчас' при цене до 18 млн CR. Избегайте переплат выше 25 млн CR — через неделю цены могут упасть."
+  "trading_advice": "Снайпинг на аукционе: сразу после сброса серии (четверг, 14:30 UTC) выставляй 20 PTS машины по минимальной цене выкупа, пока рынок не насытился. 40 PTS машины (особенно Skyline R33) держи 3-4 дня — их стоимость вырастет на 30-40% к концу сезона. Избегай покупки Supra RZ за 160 PTS, если не планируешь ездить — её перепродажа даст максимум 25M CR, а вложение очков не окупится."
 }
