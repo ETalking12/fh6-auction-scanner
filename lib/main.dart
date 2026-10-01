@@ -116,7 +116,7 @@ class _Forza6SniperAppState extends State<Forza6SniperApp> {
     final screens = [
       ScannerTab(onAddToPortfolio: _addQuickSnipeToPortfolio),
       const StrategyAdvisorTab(),
-      const PriceDatabaseTab(),
+      PriceDatabaseTab(onAddToPortfolio: _addQuickSnipeToPortfolio),
       WatchlistTab(portfolio: _portfolio, onUpdate: _savePortfolio),
     ];
 
@@ -824,7 +824,9 @@ class _ScannerTabState extends State<ScannerTab> {
 // 3. БАЗА ЦЕН (ПРОДВИНУТЫЙ АНАЛИТИЧЕСКИЙ ПАРСЕР)
 // ==========================================
 class PriceDatabaseTab extends StatefulWidget {
-  const PriceDatabaseTab({super.key});
+  final Function(String name, int price, int marketPrice, int projectedPrice) onAddToPortfolio;
+
+  const PriceDatabaseTab({super.key, required this.onAddToPortfolio});
 
   @override
   State<PriceDatabaseTab> createState() => _PriceDatabaseTabState();
@@ -873,10 +875,10 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
           
           if (parts.length < 3) continue;
 
-          // 1. Ищем ЯКОРЬ: Класс автомобиля (D 100, S1 900 и т.д.)
+          // 1. Ищем ЯКОРЬ: Класс автомобиля. ДОБАВЛЕНЫ КЛАССЫ R, E, S, P.
           int classIndex = -1;
           for (int j = 0; j < parts.length; j++) {
-            if (RegExp(r'^(D|C|B|A|S1|S2|X)\s*\d{3}$', caseSensitive: false).hasMatch(parts[j])) {
+            if (RegExp(r'^(E|D|C|B|A|S|S1|S2|R|P|X)\s*\d{3}$', caseSensitive: false).hasMatch(parts[j])) {
               classIndex = j;
               break;
             }
@@ -973,6 +975,69 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
     });
   }
 
+  void _showSaveDialog(String carName, String dbPriceString) {
+    int dbPrice = 20000000;
+    String cleanPrice = dbPriceString.replaceAll(RegExp(r'[^0-9]'), '');
+    if (cleanPrice.isNotEmpty && cleanPrice != "0") {
+      dbPrice = int.tryParse(cleanPrice) ?? 20000000;
+    }
+
+    final nameController = TextEditingController(text: carName);
+    final priceController = TextEditingController(text: "0");
+    final marketPriceController = TextEditingController(text: dbPrice.toString());
+    final projectedController = TextEditingController(text: "20000000");
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text("Принять на баланс", style: TextStyle(color: Colors.white)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController, style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(labelText: "Наименование лота", labelStyle: TextStyle(color: Colors.white54)),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: priceController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: "Фактическая цена покупки (CR)", labelStyle: TextStyle(color: Colors.white54)),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: marketPriceController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: "Рыночная цена СЕЙЧАС (CR)", labelStyle: TextStyle(color: Colors.white54)),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: projectedController, style: const TextStyle(color: Colors.amberAccent), keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: "Прогноз стоимости (МАКСИМУМ)", labelStyle: TextStyle(color: Colors.amberAccent)),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ОТМЕНА", style: TextStyle(color: Colors.white54))),
+          TextButton(
+            onPressed: () {
+              String name = nameController.text.trim();
+              if (name.isEmpty) name = "Неизвестная машина";
+              int price = int.tryParse(priceController.text) ?? 0;
+              int market = int.tryParse(marketPriceController.text) ?? 20000000;
+              int projected = int.tryParse(projectedController.text) ?? 20000000;
+              
+              widget.onAddToPortfolio(name, price, market, projected);
+              Navigator.pop(ctx);
+            },
+            child: const Text("В РАДАР", style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -1049,7 +1114,6 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
                       final price = car['price']?.toString() ?? "0";
                       final status = car['status']?.toString() ?? "Неизвестно";
                       
-                      // ИЗМЕНЕНИЕ: ВМЕСТО "???" ТЕПЕРЬ ОТОБРАЖАЕТСЯ "цены нет"
                       String priceDisplay = price == "0" 
                           ? "цены нет" 
                           : "${price.replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]} ')} CR";
@@ -1058,24 +1122,40 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
                         color: const Color(0xFF1E1E1E),
                         margin: const EdgeInsets.only(bottom: 10),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        child: Padding(
-                          padding: const EdgeInsets.all(14.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                                    const SizedBox(height: 6),
-                                    _buildTrendIndicator(status),
-                                  ],
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () => _showSaveDialog(name, price),
+                          child: Padding(
+                            padding: const EdgeInsets.all(14.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                      const SizedBox(height: 6),
+                                      _buildTrendIndicator(status),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 10),
-                              Text(priceDisplay, style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 14)),
-                            ],
+                                const SizedBox(width: 10),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(priceDisplay, style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                                    const SizedBox(height: 4),
+                                    const Row(
+                                      children: [
+                                        Text("В РАДАР ", style: TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                        Icon(Icons.add_circle_outline, color: Colors.greenAccent, size: 14),
+                                      ],
+                                    )
+                                  ]
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       );
