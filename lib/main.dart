@@ -821,7 +821,7 @@ class _ScannerTabState extends State<ScannerTab> {
 }
 
 // ==========================================
-// 3. БАЗА ЦЕН С ФИНАЛЬНЫМ ЧИСТЯЩИМ ПАРСЕРОМ
+// 3. БАЗА ЦЕН (ПРОДВИНУТЫЙ АНАЛИТИЧЕСКИЙ ПАРСЕР)
 // ==========================================
 class PriceDatabaseTab extends StatefulWidget {
   const PriceDatabaseTab({super.key});
@@ -862,76 +862,80 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
         List<dynamic> parsedData = [];
 
         List<String> lines = const LineSplitter().convert(bodyString);
-        String lastKnownBrand = ""; 
+        String lastKnownBrand = "Unknown"; 
 
-        // Пропускаем шапку таблицы (начинаем с i = 1)
         for (int i = 1; i < lines.length; i++) {
-          // Просто разбиваем по запятым
-          List<String> parts = lines[i].split(',');
+          // Разделяем строку, сохраняя текст внутри кавычек
+          List<String> rawParts = lines[i].split(RegExp(r',(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)'));
           
-          // Нам нужно как минимум 6 колонок (индексы от 0 до 5)
-          if (parts.length >= 6) {
-            // ИНДЕКС 1 - это Марка (Google Sheets ставит пустую ячейку в индекс 0)
-            String colBrand = parts[1].replaceAll('"', '').trim();
-            if (colBrand.isNotEmpty) {
-              lastKnownBrand = colBrand; 
+          // Удаляем кавычки и пустые элементы (скрытые столбцы)
+          List<String> parts = rawParts.map((e) => e.replaceAll('"', '').trim()).where((e) => e.isNotEmpty).toList();
+          
+          if (parts.length < 3) continue;
+
+          // 1. Ищем ЯКОРЬ: Класс автомобиля (D 100, S1 900 и т.д.)
+          int classIndex = -1;
+          for (int j = 0; j < parts.length; j++) {
+            if (RegExp(r'^(D|C|B|A|S1|S2|X)\s*\d{3}$', caseSensitive: false).hasMatch(parts[j])) {
+              classIndex = j;
+              break;
             }
+          }
+
+          if (classIndex != -1) {
+            // 2. Обрабатываем Марку и Модель (всё, что ДО класса)
+            List<String> preClass = parts.sublist(0, classIndex);
             
-            String brand = lastKnownBrand;
-            // ИНДЕКС 3 - это Модель (индекс 2 - это цифры вроде "5" или "10")
-            String model = parts[3].replaceAll('"', '').trim();
+            // Удаляем одиночные/двойные мусорные цифры (например, "5" или "2")
+            preClass.removeWhere((p) => RegExp(r'^\d{1,2}$').hasMatch(p));
+            
+            if (preClass.isEmpty) continue;
 
-            if (model.isNotEmpty) {
-              // Всё, что начинается с ИНДЕКСА 5 - это Класс, Источник и Цена
-              List<String> tail = [];
-              for (int j = 5; j < parts.length; j++) {
-                String p = parts[j].replaceAll('"', '').trim();
-                if (p.isNotEmpty) tail.add(p);
-              }
+            String brand = "";
+            String model = "";
+            if (preClass.length == 1) {
+              brand = lastKnownBrand;
+              model = preClass[0];
+            } else {
+              brand = preClass[0];
+              lastKnownBrand = brand;
+              model = preClass.sublist(1).join(' ');
+            }
 
-              // 1. Убираем мусор с конца (TRUE/FALSE, Даты)
-              while (tail.isNotEmpty) {
-                String lastUpper = tail.last.toUpperCase();
-                if (lastUpper == 'TRUE' || lastUpper == 'FALSE' || RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(lastUpper)) {
-                  tail.removeLast();
-                } else {
+            String carClass = parts[classIndex];
+
+            // 3. Обрабатываем Источник и Цену (всё, что ПОСЛЕ класса)
+            List<String> postClass = parts.sublist(classIndex + 1);
+            String price = "0";
+
+            // Ищем цену с конца (первое попавшееся число >= 1000)
+            for (int k = postClass.length - 1; k >= 0; k--) {
+              String cleanDigits = postClass[k].replaceAll(' ', '');
+              if (RegExp(r'^\d+$').hasMatch(cleanDigits)) {
+                int? val = int.tryParse(cleanDigits);
+                if (val != null && val >= 1000) {
+                  price = cleanDigits;
+                  postClass.removeAt(k); // Вынимаем цену из хвоста
                   break;
                 }
               }
-
-              String price = "0";
-              String carClass = "";
-              String source = "";
-
-              if (tail.isNotEmpty) {
-                // 2. Достаем Цену (проверяем, что в конце нет букв)
-                String lastEl = tail.last;
-                if (!RegExp(r'[a-zA-Zа-яА-Я]').hasMatch(lastEl)) {
-                  String cleanLast = lastEl.replaceAll(RegExp(r'[^0-9]'), '');
-                  if (cleanLast.isNotEmpty && int.tryParse(cleanLast) != null && int.parse(cleanLast) > 10) {
-                    price = cleanLast;
-                    tail.removeLast(); // Удаляем цену, чтобы она не попала в статус
-                  }
-                }
-
-                // 3. Достаем Класс авто (он всегда идет первым в оставшемся хвосте)
-                if (tail.isNotEmpty) {
-                  carClass = tail.first;
-                  tail.removeAt(0); 
-                }
-                
-                // 4. Всё остальное собираем в Источник (даже если он был разбит запятыми)
-                if (tail.isNotEmpty) {
-                  source = tail.join(', ');
-                }
-              }
-
-              parsedData.add({
-                "name": "$brand $model".trim(),
-                "price": price.isEmpty ? "0" : price,
-                "status": "$carClass${source.isNotEmpty ? ' • $source' : ''}".trim(),
-              });
             }
+
+            // 4. Очищаем оставшийся Источник от системного мусора Google Таблиц
+            postClass.removeWhere((p) {
+              String upper = p.toUpperCase();
+              return upper == 'TRUE' || upper == 'FALSE' || 
+                     RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(upper) || 
+                     RegExp(r'^\d+$').hasMatch(p);
+            });
+
+            String source = postClass.join(', ');
+
+            parsedData.add({
+              "name": "$brand $model".trim(),
+              "price": price.isEmpty ? "0" : price,
+              "status": "$carClass${source.isNotEmpty ? ' • $source' : ''}".trim(),
+            });
           }
         }
 
@@ -1045,7 +1049,10 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
                       final price = car['price']?.toString() ?? "0";
                       final status = car['status']?.toString() ?? "Неизвестно";
                       
-                      final formattedPrice = price == "0" ? "???" : price.replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]} ');
+                      // ИЗМЕНЕНИЕ: ВМЕСТО "???" ТЕПЕРЬ ОТОБРАЖАЕТСЯ "цены нет"
+                      String priceDisplay = price == "0" 
+                          ? "цены нет" 
+                          : "${price.replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]} ')} CR";
 
                       return Card(
                         color: const Color(0xFF1E1E1E),
@@ -1067,7 +1074,7 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
                                 ),
                               ),
                               const SizedBox(width: 10),
-                              Text("$formattedPrice CR", style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                              Text(priceDisplay, style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 14)),
                             ],
                           ),
                         ),
