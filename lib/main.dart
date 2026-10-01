@@ -512,7 +512,7 @@ class _ScannerTabState extends State<ScannerTab> {
   String _detectedCarName = "";
   bool _isSnipeAlert = false;
   String _lastRawText = "Готов к сканированию...";
-  String _statusBanner = "Наведите рамку на ЦЕНУ ВЫКУПА (правая колонка)";
+  String _statusBanner = "Наведите узкую линию на нужный лот";
 
   @override
   void initState() {
@@ -569,42 +569,47 @@ class _ScannerTabState extends State<ScannerTab> {
           if (!mounted) break;
 
           double maxY = 1.0;
-          double maxX = 1.0;
           for (TextBlock block in recognizedText.blocks) {
             if (block.boundingBox.bottom > maxY) maxY = block.boundingBox.bottom;
-            if (block.boundingBox.right > maxX) maxX = block.boundingBox.right;
           }
 
           String focusedText = "";
+          // ИЗМЕНЕНИЕ 1: Читаем блоки построчно
           for (TextBlock block in recognizedText.blocks) {
-            double blockCenterY = block.boundingBox.top + (block.boundingBox.height / 2);
-            double blockCenterX = block.boundingBox.left + (block.boundingBox.width / 2);
-            
-            // ИЗМЕНЕНИЕ: Жестко фильтруем зону!
-            // Берем только узкую полосу по центру по высоте (0.42 - 0.58)
-            // И строго ПРАВУЮ половину экрана (X > 0.45)
-            if (blockCenterY > (maxY * 0.42) && blockCenterY < (maxY * 0.58) && blockCenterX > (maxX * 0.45)) {
-              focusedText += block.text + " ";
+            for (TextLine line in block.lines) {
+              double lineCenterY = line.boundingBox.top + (line.boundingBox.height / 2);
+              
+              // ИЗМЕНЕНИЕ 2: Очень узкая лазерная полоса (ровно по центру экрана, 46% - 54% высоты)
+              // Это не даст OCR захватить две строки аукциона одновременно
+              if (lineCenterY > (maxY * 0.46) && lineCenterY < (maxY * 0.54)) {
+                focusedText += line.text + " ";
+              }
             }
           }
 
           final raw = focusedText.trim();
           setState(() {
-            _lastRawText = raw.isEmpty ? "Пусто в рамке" : (raw.length > 35 ? "${raw.substring(0, 35)}..." : raw.replaceAll('\n', ' '));
+            _lastRawText = raw.isEmpty ? "Пусто в рамке" : (raw.length > 40 ? "${raw.substring(0, 40)}..." : raw);
           });
 
-          final priceRegex = RegExp(r'\b\d{1,3}(?:[., ]\d{3})*\b|\b\d+\b');
-          final priceMatches = priceRegex.allMatches(raw);
+          // ИЗМЕНЕНИЕ 3: Пылесос пробелов.
+          // Склеиваем разрывы в ценах (например "20 000 000" -> "20000000")
+          String rawCleaned = raw;
+          for (int i = 0; i < 2; i++) {
+            rawCleaned = rawCleaned.replaceAllMapped(RegExp(r'(\d)\s+(\d{3})(?!\d)'), (Match m) => '${m[1]}${m[2]}');
+          }
+
+          // Теперь извлекаем все нормальные, склеенные числа
+          final priceMatches = RegExp(r'\d+').allMatches(rawCleaned);
           List<int> validPrices = [];
           for (final match in priceMatches) {
-            String cleanNumStr = match.group(0)!.replaceAll(RegExp(r'[^0-9]'), '');
-            if (cleanNumStr.isNotEmpty) {
-              int parsedNum = int.parse(cleanNumStr);
-              if (parsedNum >= 10000 && parsedNum <= 20000000) validPrices.add(parsedNum);
+            int? parsedNum = int.tryParse(match.group(0)!);
+            if (parsedNum != null && parsedNum >= 10000 && parsedNum <= 20000000) {
+              validPrices.add(parsedNum);
             }
           }
 
-          // Попытка распознать название всё еще работает
+          // Логика названия машины (осталась прежней)
           final wordRegex = RegExp(r'\b[A-Za-zА-Яа-я0-9]{2,15}\b');
           final wordMatches = wordRegex.allMatches(raw);
           List<String> validWords = [];
@@ -615,15 +620,15 @@ class _ScannerTabState extends State<ScannerTab> {
             if (RegExp(r'^\d+$').hasMatch(word)) continue;
             validWords.add(word);
           }
-          String guessedName = validWords.take(4).join(" ");
+          String guessedName = validWords.take(3).join(" ");
           if (guessedName.isNotEmpty) _detectedCarName = guessedName;
 
           if (validPrices.isNotEmpty) {
-            // ИЗМЕНЕНИЕ: Теперь мы ищем МАКСИМАЛЬНУЮ цену в рамке (выкуп), а не минимальную (ставку)
+            // ИЗМЕНЕНИЕ 4: Ищем МАКСИМАЛЬНУЮ цену (так как цена выкупа всегда больше или равна ставке)
             int targetPrice = validPrices.reduce((curr, next) => curr > next ? curr : next);
             _processPrice(targetPrice);
           } else {
-            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Наведите рамку на ЦЕНУ ВЫКУПА (справа)"; });
+            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Наведите узкую линию на нужный лот"; });
           }
         } catch (e) {
           if (mounted) setState(() => _lastRawText = "Ошибка распознавания");
@@ -791,18 +796,16 @@ class _ScannerTabState extends State<ScannerTab> {
             ),
           ),
           
-          // ИЗМЕНЕНИЕ: Сдвигаем прицельную рамку вправо и делаем её меньше
-          Align(
-            alignment: Alignment.centerRight,
-            child: Padding(
-              padding: const EdgeInsets.only(right: 15.0),
-              child: Container(
-                width: 220, height: 100,
-                decoration: BoxDecoration(
-                    border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white70, width: _isSnipeAlert ? 4.0 : 2.5),
-                    boxShadow: _isSnipeAlert ? [BoxShadow(color: Colors.greenAccent.withOpacity(0.6), blurRadius: 12, spreadRadius: 3)] : [],
-                    borderRadius: BorderRadius.circular(12)),
-              ),
+          // ИЗМЕНЕНИЕ 5: Форма лазерного прицела
+          // Теперь это узкая и широкая полоса. Вам нужно просто навести её на нужный лот (чтобы она пересекала и название, и цену)
+          Center(
+            child: Container(
+              width: MediaQuery.of(context).size.width * 0.90, 
+              height: 75,
+              decoration: BoxDecoration(
+                  border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white70, width: _isSnipeAlert ? 4.0 : 2.0),
+                  boxShadow: _isSnipeAlert ? [BoxShadow(color: Colors.greenAccent.withOpacity(0.6), blurRadius: 12, spreadRadius: 3)] : [],
+                  borderRadius: BorderRadius.circular(12)),
             ),
           ),
 
