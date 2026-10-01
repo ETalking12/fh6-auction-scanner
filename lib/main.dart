@@ -733,7 +733,7 @@ class _ScannerTabState extends State<ScannerTab> {
               String name = nameController.text.trim();
               if (name.isEmpty) name = "Неизвестная машина";
               int price = int.tryParse(priceController.text) ?? currentPrice;
-              int market = int.tryParse(marketController.text) ?? _targetMarketValue;
+              int market = int.tryParse(currentMarketController.text) ?? _targetMarketValue;
               int projected = int.tryParse(projectedController.text) ?? 20000000;
               
               widget.onAddToPortfolio(name, price, market, projected);
@@ -821,7 +821,7 @@ class _ScannerTabState extends State<ScannerTab> {
 }
 
 // ==========================================
-// 3. БАЗА ЦЕН С АДАПТИВНЫМ ПАРСЕРОМ GOOGLE ТАБЛИЦ
+// 3. БАЗА ЦЕН С ФИНАЛЬНЫМ ЧИСТЯЩИМ ПАРСЕРОМ
 // ==========================================
 class PriceDatabaseTab extends StatefulWidget {
   const PriceDatabaseTab({super.key});
@@ -864,14 +864,13 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
         List<String> lines = const LineSplitter().convert(bodyString);
         String lastKnownBrand = ""; 
 
-        // Пропускаем шапку таблицы
         for (int i = 1; i < lines.length; i++) {
-          List<String> parts = lines[i].split(',');
+          List<String> parts = lines[i].split(RegExp(r',(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)'));
           
           if (parts.length >= 4) {
             String colBrand = parts[1].replaceAll('"', '').trim();
             if (colBrand.isNotEmpty) {
-              lastKnownBrand = colBrand;
+              lastKnownBrand = colBrand; 
             }
             
             String brand = lastKnownBrand;
@@ -884,7 +883,7 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
                 if (p.isNotEmpty) tail.add(p);
               }
 
-              // Очищаем хвост от системного мусора (TRUE/FALSE)
+              // 1. Очистка от системного мусора в конце (TRUE/FALSE)
               while (tail.isNotEmpty && 
                     (tail.last.toUpperCase() == 'TRUE' || tail.last.toUpperCase() == 'FALSE')) {
                 tail.removeLast();
@@ -895,18 +894,26 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
               String source = "";
 
               if (tail.isNotEmpty) {
+                // 2. Ищем цену (число от 10 и выше в конце строки)
                 String lastEl = tail.last;
                 String digitsOnly = lastEl.replaceAll(RegExp(r'[^0-9]'), '');
-                if (digitsOnly.isNotEmpty && digitsOnly.length >= (lastEl.length / 2)) {
+                if (digitsOnly.isNotEmpty && digitsOnly == lastEl && int.tryParse(digitsOnly) != null && int.parse(digitsOnly) > 10) {
                   price = digitsOnly;
                   tail.removeLast(); 
                 }
                 
+                // 3. Убираем короткие числа (например, '2', '3'), которые попали в начало хвоста
+                if (tail.isNotEmpty && RegExp(r'^\d{1,2}$').hasMatch(tail.first)) {
+                  tail.removeAt(0);
+                }
+
+                // 4. Оставшийся первый элемент - это Класс (например, D 100)
                 if (tail.isNotEmpty) {
                   carClass = tail.first;
                   tail.removeAt(0); 
                 }
                 
+                // 5. Всё, что осталось посередине - это Источник
                 if (tail.isNotEmpty) {
                   source = tail.join(', ');
                 }
