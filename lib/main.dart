@@ -511,8 +511,8 @@ class _ScannerTabState extends State<ScannerTab> {
   int _detectedPrice = 0;
   String _detectedCarName = "";
   bool _isSnipeAlert = false;
-  String _lastRawText = "Готов к сканированию...";
-  String _statusBanner = "Наведите узкую линию на нужный лот";
+  String _lastRawText = "Ожидание сканирования...";
+  String _statusBanner = "Совместите зоны на экране с лотом";
 
   @override
   void initState() {
@@ -569,66 +569,73 @@ class _ScannerTabState extends State<ScannerTab> {
           if (!mounted) break;
 
           double maxY = 1.0;
+          double maxX = 1.0;
           for (TextBlock block in recognizedText.blocks) {
             if (block.boundingBox.bottom > maxY) maxY = block.boundingBox.bottom;
+            if (block.boundingBox.right > maxX) maxX = block.boundingBox.right;
           }
 
-          String focusedText = "";
-          // ИЗМЕНЕНИЕ 1: Читаем блоки построчно
+          String priceText = "";
+          String nameText = "";
+          
           for (TextBlock block in recognizedText.blocks) {
             for (TextLine line in block.lines) {
               double lineCenterY = line.boundingBox.top + (line.boundingBox.height / 2);
-              
-              // ИЗМЕНЕНИЕ 2: Очень узкая лазерная полоса (ровно по центру экрана, 46% - 54% высоты)
-              // Это не даст OCR захватить две строки аукциона одновременно
-              if (lineCenterY > (maxY * 0.46) && lineCenterY < (maxY * 0.54)) {
-                focusedText += line.text + " ";
+              double lineCenterX = line.boundingBox.left + (line.boundingBox.width / 2);
+
+              // Берем только узкую полосу по вертикали
+              if (lineCenterY > (maxY * 0.42) && lineCenterY < (maxY * 0.58)) {
+                // Если текст справа (Зона ВЫКУПА)
+                if (lineCenterX > (maxX * 0.65)) {
+                  priceText += line.text + " ";
+                } 
+                // Если текст слева (Зона НАЗВАНИЯ)
+                else if (lineCenterX < (maxX * 0.40)) {
+                  nameText += line.text + " ";
+                }
+                // ЦЕНТРАЛЬНАЯ ЗОНА (СТАВКИ) ПОЛНОСТЬЮ ИГНОРИРУЕТСЯ
               }
             }
           }
 
-          final raw = focusedText.trim();
           setState(() {
-            _lastRawText = raw.isEmpty ? "Пусто в рамке" : (raw.length > 40 ? "${raw.substring(0, 40)}..." : raw);
+            _lastRawText = "Выкуп OCR: " + (priceText.isEmpty ? "Пусто" : priceText);
           });
 
-          // ИЗМЕНЕНИЕ 3: Пылесос пробелов.
-          // Склеиваем разрывы в ценах (например "20 000 000" -> "20000000")
-          String rawCleaned = raw;
-          for (int i = 0; i < 2; i++) {
-            rawCleaned = rawCleaned.replaceAllMapped(RegExp(r'(\d)\s+(\d{3})(?!\d)'), (Match m) => '${m[1]}${m[2]}');
+          // Пылесос цифр: убираем вообще всё кроме цифр
+          String cleanDigits = priceText.replaceAll(RegExp(r'[^0-9]'), '');
+          int targetPrice = 0;
+
+          if (cleanDigits.isNotEmpty) {
+            try {
+              int val = int.parse(cleanDigits);
+              // Если OCR прихватил мусор (например, значок сделал из 20 млн -> 200 млн), отрезаем с конца
+              while (val > 20000000) {
+                val = val ~/ 10;
+              }
+              if (val >= 10000 && val <= 20000000) {
+                targetPrice = val;
+              }
+            } catch (e) {}
           }
 
-          // Теперь извлекаем все нормальные, склеенные числа
-          final priceMatches = RegExp(r'\d+').allMatches(rawCleaned);
-          List<int> validPrices = [];
-          for (final match in priceMatches) {
-            int? parsedNum = int.tryParse(match.group(0)!);
-            if (parsedNum != null && parsedNum >= 10000 && parsedNum <= 20000000) {
-              validPrices.add(parsedNum);
-            }
-          }
-
-          // Логика названия машины (осталась прежней)
+          // Логика названия машины
           final wordRegex = RegExp(r'\b[A-Za-zА-Яа-я0-9]{2,15}\b');
-          final wordMatches = wordRegex.allMatches(raw);
+          final wordMatches = wordRegex.allMatches(nameText);
           List<String> validWords = [];
           for (final m in wordMatches) {
             String word = m.group(0)!;
-            String upper = word.toUpperCase();
-            if (upper == "MIN" || upper == "МИН" || upper == "CR") continue;
+            if (word.toUpperCase() == "MIN" || word.toUpperCase() == "МИН" || word.toUpperCase() == "CR") continue;
             if (RegExp(r'^\d+$').hasMatch(word)) continue;
             validWords.add(word);
           }
           String guessedName = validWords.take(3).join(" ");
           if (guessedName.isNotEmpty) _detectedCarName = guessedName;
 
-          if (validPrices.isNotEmpty) {
-            // ИЗМЕНЕНИЕ 4: Ищем МАКСИМАЛЬНУЮ цену (так как цена выкупа всегда больше или равна ставке)
-            int targetPrice = validPrices.reduce((curr, next) => curr > next ? curr : next);
+          if (targetPrice > 0) {
             _processPrice(targetPrice);
           } else {
-            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Наведите узкую линию на нужный лот"; });
+            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Совместите зоны на экране с лотом"; });
           }
         } catch (e) {
           if (mounted) setState(() => _lastRawText = "Ошибка распознавания");
@@ -647,11 +654,11 @@ class _ScannerTabState extends State<ScannerTab> {
       _detectedPrice = price;
       if (price <= alertThreshold) {
         _isSnipeAlert = true;
-        _statusBanner = "🔥 СНАЙП! Цена: $price CR (Выгода > ${(_desiredDiscount * 100).toInt()}%)";
+        _statusBanner = "🔥 СНАЙП! Выкуп: $price CR (Выгода > ${(_desiredDiscount * 100).toInt()}%)";
         HapticFeedback.heavyImpact();
       } else {
         _isSnipeAlert = false;
-        _statusBanner = "Выкуп: $price CR (Маржинальность мала)";
+        _statusBanner = "Цена Выкупа: $price CR (Маржинальность мала)";
       }
     });
   }
@@ -796,16 +803,24 @@ class _ScannerTabState extends State<ScannerTab> {
             ),
           ),
           
-          // ИЗМЕНЕНИЕ 5: Форма лазерного прицела
-          // Теперь это узкая и широкая полоса. Вам нужно просто навести её на нужный лот (чтобы она пересекала и название, и цену)
+          // НОВЫЙ ТРЕХЗОННЫЙ ПРИЦЕЛ
           Center(
             child: Container(
-              width: MediaQuery.of(context).size.width * 0.90, 
-              height: 75,
+              width: MediaQuery.of(context).size.width * 0.95,
+              height: 70,
               decoration: BoxDecoration(
-                  border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white70, width: _isSnipeAlert ? 4.0 : 2.0),
+                  border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white54, width: 2.0),
                   boxShadow: _isSnipeAlert ? [BoxShadow(color: Colors.greenAccent.withOpacity(0.6), blurRadius: 12, spreadRadius: 3)] : [],
-                  borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(8)),
+              child: Row(
+                children: [
+                  Expanded(flex: 4, child: Container(color: Colors.blueAccent.withOpacity(0.1), child: Center(child: Text("НАЗВАНИЕ", style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.bold))))),
+                  Container(width: 1, color: Colors.white24),
+                  Expanded(flex: 3, child: Container(child: Center(child: Text("СТАВКА (Игнор)", style: TextStyle(color: Colors.white38, fontSize: 10))))),
+                  Container(width: 1, color: Colors.white24),
+                  Expanded(flex: 3, child: Container(color: Colors.greenAccent.withOpacity(0.15), child: Center(child: Text("ВЫКУП", style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold))))),
+                ],
+              ),
             ),
           ),
 
@@ -817,7 +832,7 @@ class _ScannerTabState extends State<ScannerTab> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text("OCR видит (в рамке): $_lastRawText", style: const TextStyle(color: Colors.white60, fontSize: 11), overflow: TextOverflow.ellipsis),
+                  Text(_lastRawText, style: const TextStyle(color: Colors.white60, fontSize: 11), overflow: TextOverflow.ellipsis),
                   const Divider(color: Colors.white24, height: 14),
                   Text(_statusBanner, style: TextStyle(color: _isSnipeAlert ? Colors.greenAccent : Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
                   if (_detectedPrice > 0) ...[
