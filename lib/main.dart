@@ -692,7 +692,7 @@ class _ScannerTabState extends State<ScannerTab> {
   void _showSaveDialog(int currentPrice, String guessedName) {
     final nameController = TextEditingController(text: guessedName);
     final priceController = TextEditingController(text: currentPrice.toString());
-    final marketController = TextEditingController(text: _targetMarketValue.toString());
+    final marketPriceController = TextEditingController(text: _targetMarketValue.toString());
     final projectedController = TextEditingController(text: "20000000"); 
 
     showDialog(
@@ -715,7 +715,7 @@ class _ScannerTabState extends State<ScannerTab> {
               ),
               const SizedBox(height: 10),
               TextField(
-                controller: marketController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number,
+                controller: marketPriceController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: "Рыночная цена СЕЙЧАС (CR)", labelStyle: TextStyle(color: Colors.white54)),
               ),
               const SizedBox(height: 10),
@@ -733,7 +733,7 @@ class _ScannerTabState extends State<ScannerTab> {
               String name = nameController.text.trim();
               if (name.isEmpty) name = "Неизвестная машина";
               int price = int.tryParse(priceController.text) ?? currentPrice;
-              int market = int.tryParse(marketController.text) ?? _targetMarketValue;
+              int market = int.tryParse(marketPriceController.text) ?? _targetMarketValue;
               int projected = int.tryParse(projectedController.text) ?? 20000000;
               
               widget.onAddToPortfolio(name, price, market, projected);
@@ -821,7 +821,7 @@ class _ScannerTabState extends State<ScannerTab> {
 }
 
 // ==========================================
-// 3. БАЗА ЦЕН (САМООЧИЩАЮЩИЙСЯ ПАРСЕР ХВОСТА)
+// 3. БАЗА ЦЕН С ФИНАЛЬНЫМ ЧИСТЯЩИМ ПАРСЕРОМ
 // ==========================================
 class PriceDatabaseTab extends StatefulWidget {
   const PriceDatabaseTab({super.key});
@@ -864,53 +864,67 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
         List<String> lines = const LineSplitter().convert(bodyString);
         String lastKnownBrand = ""; 
 
-        // Начинаем парсинг со второй строки
+        // Пропускаем шапку таблицы (начинаем с i = 1)
         for (int i = 1; i < lines.length; i++) {
-          // Стандартно бьем по запятым, очищая кавычки
-          List<String> parts = lines[i].split(',').map((e) => e.replaceAll('"', '').trim()).toList();
+          // Просто разбиваем по запятым
+          List<String> parts = lines[i].split(',');
           
-          if (parts.length >= 4) {
-            String colBrand = parts[0];
+          // Нам нужно как минимум 6 колонок (индексы от 0 до 5)
+          if (parts.length >= 6) {
+            // ИНДЕКС 1 - это Марка (Google Sheets ставит пустую ячейку в индекс 0)
+            String colBrand = parts[1].replaceAll('"', '').trim();
             if (colBrand.isNotEmpty) {
-              lastKnownBrand = colBrand; // Память марки
+              lastKnownBrand = colBrand; 
             }
             
             String brand = lastKnownBrand;
-            String model = parts[2];
+            // ИНДЕКС 3 - это Модель (индекс 2 - это цифры вроде "5" или "10")
+            String model = parts[3].replaceAll('"', '').trim();
 
             if (model.isNotEmpty) {
-              String carClass = parts[3];
-              
-              // Забираем весь хвост (после Класса) в отдельный список
-              List<String> tail = parts.sublist(4);
+              // Всё, что начинается с ИНДЕКСА 5 - это Класс, Источник и Цена
+              List<String> tail = [];
+              for (int j = 5; j < parts.length; j++) {
+                String p = parts[j].replaceAll('"', '').trim();
+                if (p.isNotEmpty) tail.add(p);
+              }
 
-              // 1. ОЧИСТКА СПРАВА: Удаляем TRUE, FALSE, Даты и пустые ячейки
+              // 1. Убираем мусор с конца (TRUE/FALSE, Даты)
               while (tail.isNotEmpty) {
                 String lastUpper = tail.last.toUpperCase();
-                if (lastUpper == 'TRUE' || 
-                    lastUpper == 'FALSE' || 
-                    RegExp(r'\d{4}-\d{2}-\d{2}').hasMatch(tail.last) || 
-                    tail.last.isEmpty) {
+                if (lastUpper == 'TRUE' || lastUpper == 'FALSE' || RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(lastUpper)) {
                   tail.removeLast();
                 } else {
-                  break; // Дошли до полезных данных
+                  break;
                 }
               }
 
-              // 2. ИЗВЛЕЧЕНИЕ ЦЕНЫ: Ищем её справа (последний оставшийся элемент)
               String price = "0";
+              String carClass = "";
+              String source = "";
+
               if (tail.isNotEmpty) {
-                // Очищаем от пробелов (если цена 125 000)
-                String cleanLast = tail.last.replaceAll(' ', '');
-                // Если элемент состоит строго из цифр - это цена
-                if (RegExp(r'^\d+$').hasMatch(cleanLast)) {
-                  price = cleanLast;
-                  tail.removeLast(); // Удаляем цену из хвоста
+                // 2. Достаем Цену (проверяем, что в конце нет букв)
+                String lastEl = tail.last;
+                if (!RegExp(r'[a-zA-Zа-яА-Я]').hasMatch(lastEl)) {
+                  String cleanLast = lastEl.replaceAll(RegExp(r'[^0-9]'), '');
+                  if (cleanLast.isNotEmpty && int.tryParse(cleanLast) != null && int.parse(cleanLast) > 10) {
+                    price = cleanLast;
+                    tail.removeLast(); // Удаляем цену, чтобы она не попала в статус
+                  }
+                }
+
+                // 3. Достаем Класс авто (он всегда идет первым в оставшемся хвосте)
+                if (tail.isNotEmpty) {
+                  carClass = tail.first;
+                  tail.removeAt(0); 
+                }
+                
+                // 4. Всё остальное собираем в Источник (даже если он был разбит запятыми)
+                if (tail.isNotEmpty) {
+                  source = tail.join(', ');
                 }
               }
-
-              // 3. ФОРМИРОВАНИЕ ИСТОЧНИКА: Всё, что осталось в хвосте
-              String source = tail.join(', ');
 
               parsedData.add({
                 "name": "$brand $model".trim(),
@@ -1099,7 +1113,7 @@ class _WatchlistTabState extends State<WatchlistTab> {
   void _showManualAddDialog() {
     TextEditingController? autoNameController;
     final priceController = TextEditingController();
-    final currentMarketController = TextEditingController(text: "20000000");
+    final marketPriceController = TextEditingController(text: "20000000");
     final projectedController = TextEditingController(text: "20000000");
 
     showDialog(
@@ -1164,7 +1178,7 @@ class _WatchlistTabState extends State<WatchlistTab> {
               ),
               const SizedBox(height: 10),
               TextField(
-                controller: currentMarketController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number,
+                controller: marketPriceController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: "Рынок СЕЙЧАС (CR)", labelStyle: TextStyle(color: Colors.white54), enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)), focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.greenAccent))),
               ),
               const SizedBox(height: 10),
@@ -1182,7 +1196,7 @@ class _WatchlistTabState extends State<WatchlistTab> {
               String name = autoNameController?.text.trim() ?? "";
               if (name.isEmpty) name = "Неизвестная машина";
               int price = int.tryParse(priceController.text) ?? 0;
-              int market = int.tryParse(currentMarketController.text) ?? 20000000;
+              int market = int.tryParse(marketPriceController.text) ?? 20000000;
               int projected = int.tryParse(projectedController.text) ?? 20000000;
               
               final newItem = WatchlistItem(
@@ -1206,7 +1220,7 @@ class _WatchlistTabState extends State<WatchlistTab> {
   void _showEditDialog(BuildContext context, WatchlistItem item) {
     final nameController = TextEditingController(text: item.name);
     final priceController = TextEditingController(text: item.buyPrice.toString());
-    final currentMarketController = TextEditingController(text: item.targetPrice.toString());
+    final marketPriceController = TextEditingController(text: item.targetPrice.toString());
     final projectedController = TextEditingController(text: item.projectedPrice.toString());
 
     showDialog(
@@ -1222,7 +1236,7 @@ class _WatchlistTabState extends State<WatchlistTab> {
               const SizedBox(height: 10),
               TextField(controller: priceController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Цена закупки (CR)", labelStyle: TextStyle(color: Colors.white54))),
               const SizedBox(height: 10),
-              TextField(controller: currentMarketController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Рынок СЕЙЧАС (CR)", labelStyle: TextStyle(color: Colors.white54))),
+              TextField(controller: marketPriceController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Рынок СЕЙЧАС (CR)", labelStyle: TextStyle(color: Colors.white54))),
               const SizedBox(height: 10),
               TextField(controller: projectedController, style: const TextStyle(color: Colors.amberAccent), keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Прогноз / Максимум (CR)", labelStyle: TextStyle(color: Colors.amberAccent))),
             ],
@@ -1235,7 +1249,7 @@ class _WatchlistTabState extends State<WatchlistTab> {
               setState(() {
                 item.name = nameController.text.trim();
                 item.buyPrice = int.tryParse(priceController.text) ?? item.buyPrice;
-                item.targetPrice = int.tryParse(currentMarketController.text) ?? item.targetPrice;
+                item.targetPrice = int.tryParse(marketPriceController.text) ?? item.targetPrice;
                 item.projectedPrice = int.tryParse(projectedController.text) ?? item.projectedPrice;
               });
               widget.onUpdate();
