@@ -1,35 +1,35 @@
-name: Auto DeepSeek Season Sync
+name: Обновление Сезона ИИ
 
 on:
   schedule:
-    # Запуск каждый четверг в 14:30 UTC (17:30 по Московскому времени)
-    - cron: '30 14 * * THU'
-  workflow_dispatch:
-
-permissions:
-  contents: write
+    # Запуск каждый четверг в 14:35 UTC (17:35 МСК)
+    - cron: '35 14 * * 4'
+  workflow_dispatch: # Позволяет запускать скрипт вручную по кнопке
 
 jobs:
-  sync:
+  update-playlist:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout репозитория
+        uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Настройка Python
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Run DeepSeek Updater Script
+      - name: Установка зависимостей
+        run: pip install requests
+
+      - name: Запуск скрипта обновления ИИ
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-        run: |
-          python updater.py
+        run: python season_updater.py
 
-      - name: Commit and push playlist.json
+      - name: Коммит и пуш изменений
         run: |
-          git config --global user.name "DeepSeek Bot"
-          git config --global user.email "bot@users.noreply.github.com"
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add playlist.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update playlist via DeepSeek AI" && git push)
+          git commit -m "🤖 Автоматическое обновление сезона (DeepSeek)" || echo "Нет изменений для коммита"
+          git push
