@@ -1,8 +1,12 @@
 {
-  "current_season": "Ожидание данных FH6",
-  "series_number": "Ожидание данных FH6",
-  "series_rewards": "Ожидание данных FH6",
-  "cars_20pts": [{"name": "Ожидание данных FH6", "est_value": "0"}],
-  "cars_40pts": [{"name": "Ожидание данных FH6", "est_value": "0"}],
-  "trading_advice": "Ожидание данных FH6"
+  "current_season": "SPRING",
+  "series_number": "Series 5: British Automotive",
+  "series_rewards": "80 PTS: 2025 Bentley Continental GT Speed, 160 PTS: 2019 Aston Martin Valhalla Concept Car",
+  "cars_20pts": [
+    {"name": "2002 Lotus Esprit V8", "est_value": "цены нет"}
+  ],
+  "cars_40pts": [
+    {"name": "2023 Lotus Emira", "est_value": "цены нет"}
+  ],
+  "trading_advice": "Lotus Esprit V8 и Emira пользуются повышенным спросом на старте весеннего сезона. Скупайте лоты в первые часы после обновления и выставляйте по максимальной цене."
 }
