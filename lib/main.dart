@@ -199,7 +199,6 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
   Future<void> _fetchPlaylistData() async {
     setState(() { _isLoading = true; _errorMsg = ""; });
     try {
-      // ОБХОД КЭША GITHUB: Добавляем уникальную метку времени к ссылке
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final uncashedUrl = "$PLAYLIST_FEED_URL&t=$timestamp";
       
@@ -513,7 +512,7 @@ class _ScannerTabState extends State<ScannerTab> {
   String _detectedCarName = "";
   bool _isSnipeAlert = false;
   String _lastRawText = "Готов к сканированию...";
-  String _statusBanner = "Наведите рамку на цены выкупа";
+  String _statusBanner = "Наведите рамку на ЦЕНУ ВЫКУПА (правая колонка)";
 
   @override
   void initState() {
@@ -570,14 +569,21 @@ class _ScannerTabState extends State<ScannerTab> {
           if (!mounted) break;
 
           double maxY = 1.0;
+          double maxX = 1.0;
           for (TextBlock block in recognizedText.blocks) {
             if (block.boundingBox.bottom > maxY) maxY = block.boundingBox.bottom;
+            if (block.boundingBox.right > maxX) maxX = block.boundingBox.right;
           }
 
           String focusedText = "";
           for (TextBlock block in recognizedText.blocks) {
             double blockCenterY = block.boundingBox.top + (block.boundingBox.height / 2);
-            if (blockCenterY > (maxY * 0.35) && blockCenterY < (maxY * 0.65)) {
+            double blockCenterX = block.boundingBox.left + (block.boundingBox.width / 2);
+            
+            // ИЗМЕНЕНИЕ: Жестко фильтруем зону!
+            // Берем только узкую полосу по центру по высоте (0.42 - 0.58)
+            // И строго ПРАВУЮ половину экрана (X > 0.45)
+            if (blockCenterY > (maxY * 0.42) && blockCenterY < (maxY * 0.58) && blockCenterX > (maxX * 0.45)) {
               focusedText += block.text + " ";
             }
           }
@@ -598,6 +604,7 @@ class _ScannerTabState extends State<ScannerTab> {
             }
           }
 
+          // Попытка распознать название всё еще работает
           final wordRegex = RegExp(r'\b[A-Za-zА-Яа-я0-9]{2,15}\b');
           final wordMatches = wordRegex.allMatches(raw);
           List<String> validWords = [];
@@ -605,21 +612,18 @@ class _ScannerTabState extends State<ScannerTab> {
             String word = m.group(0)!;
             String upper = word.toUpperCase();
             if (upper == "MIN" || upper == "МИН" || upper == "CR") continue;
-            if (RegExp(r'^\d+$').hasMatch(word)) {
-              int val = int.parse(word);
-              if (!((val >= 1900 && val <= 2050) || word.length == 3)) continue;
-            }
+            if (RegExp(r'^\d+$').hasMatch(word)) continue;
             validWords.add(word);
           }
-
           String guessedName = validWords.take(4).join(" ");
           if (guessedName.isNotEmpty) _detectedCarName = guessedName;
 
           if (validPrices.isNotEmpty) {
-            int minPrice = validPrices.reduce((curr, next) => curr < next ? curr : next);
-            _processPrice(minPrice);
+            // ИЗМЕНЕНИЕ: Теперь мы ищем МАКСИМАЛЬНУЮ цену в рамке (выкуп), а не минимальную (ставку)
+            int targetPrice = validPrices.reduce((curr, next) => curr > next ? curr : next);
+            _processPrice(targetPrice);
           } else {
-            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Наведите рамку на цены выкупа"; });
+            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Наведите рамку на ЦЕНУ ВЫКУПА (справа)"; });
           }
         } catch (e) {
           if (mounted) setState(() => _lastRawText = "Ошибка распознавания");
@@ -642,7 +646,7 @@ class _ScannerTabState extends State<ScannerTab> {
         HapticFeedback.heavyImpact();
       } else {
         _isSnipeAlert = false;
-        _statusBanner = "Цена: $price CR (Маржинальность мала)";
+        _statusBanner = "Выкуп: $price CR (Маржинальность мала)";
       }
     });
   }
@@ -786,15 +790,22 @@ class _ScannerTabState extends State<ScannerTab> {
               label: Text("Сигнал < $alertThreshold", style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
             ),
           ),
-          Center(
-            child: Container(
-              width: 330, height: 130,
-              decoration: BoxDecoration(
-                  border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white70, width: _isSnipeAlert ? 4.0 : 2.5),
-                  boxShadow: _isSnipeAlert ? [BoxShadow(color: Colors.greenAccent.withOpacity(0.6), blurRadius: 12, spreadRadius: 3)] : [],
-                  borderRadius: BorderRadius.circular(12)),
+          
+          // ИЗМЕНЕНИЕ: Сдвигаем прицельную рамку вправо и делаем её меньше
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 15.0),
+              child: Container(
+                width: 220, height: 100,
+                decoration: BoxDecoration(
+                    border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white70, width: _isSnipeAlert ? 4.0 : 2.5),
+                    boxShadow: _isSnipeAlert ? [BoxShadow(color: Colors.greenAccent.withOpacity(0.6), blurRadius: 12, spreadRadius: 3)] : [],
+                    borderRadius: BorderRadius.circular(12)),
+              ),
             ),
           ),
+
           Positioned(
             bottom: 20, left: 16, right: 16,
             child: Container(
@@ -871,15 +882,11 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
         String lastKnownBrand = "Unknown"; 
 
         for (int i = 1; i < lines.length; i++) {
-          // Разделяем строку, сохраняя текст внутри кавычек
           List<String> rawParts = lines[i].split(RegExp(r',(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)'));
-          
-          // Удаляем кавычки и пустые элементы (скрытые столбцы)
           List<String> parts = rawParts.map((e) => e.replaceAll('"', '').trim()).where((e) => e.isNotEmpty).toList();
           
           if (parts.length < 3) continue;
 
-          // 1. Ищем ЯКОРЬ: Класс автомобиля. ДОБАВЛЕНЫ КЛАССЫ R, E, S, P.
           int classIndex = -1;
           for (int j = 0; j < parts.length; j++) {
             if (RegExp(r'^(E|D|C|B|A|S|S1|S2|R|P|X)\s*\d{3}$', caseSensitive: false).hasMatch(parts[j])) {
@@ -889,10 +896,7 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
           }
 
           if (classIndex != -1) {
-            // 2. Обрабатываем Марку и Модель (всё, что ДО класса)
             List<String> preClass = parts.sublist(0, classIndex);
-            
-            // Удаляем одиночные/двойные мусорные цифры (например, "5" или "2")
             preClass.removeWhere((p) => RegExp(r'^\d{1,2}$').hasMatch(p));
             
             if (preClass.isEmpty) continue;
@@ -910,24 +914,21 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
 
             String carClass = parts[classIndex];
 
-            // 3. Обрабатываем Источник и Цену (всё, что ПОСЛЕ класса)
             List<String> postClass = parts.sublist(classIndex + 1);
             String price = "0";
 
-            // Ищем цену с конца (первое попавшееся число >= 1000)
             for (int k = postClass.length - 1; k >= 0; k--) {
               String cleanDigits = postClass[k].replaceAll(' ', '');
               if (RegExp(r'^\d+$').hasMatch(cleanDigits)) {
                 int? val = int.tryParse(cleanDigits);
                 if (val != null && val >= 1000) {
                   price = cleanDigits;
-                  postClass.removeAt(k); // Вынимаем цену из хвоста
+                  postClass.removeAt(k); 
                   break;
                 }
               }
             }
 
-            // 4. Очищаем оставшийся Источник от системного мусора Google Таблиц
             postClass.removeWhere((p) {
               String upper = p.toUpperCase();
               return upper == 'TRUE' || upper == 'FALSE' || 
