@@ -1,14 +1,8 @@
 {
-  "current_season": "WINTER",
-  "series_number": "Series 55",
-  "series_rewards": "1998 Subaru Impreza 22B-STI Version",
-  "cars_20pts": [
-    {"name": "2019 Porsche 911 Carrera S", "est_value": "цены нет"},
-    {"name": "2015 Ferrari 488 GTB", "est_value": "цены нет"}
-  ],
-  "cars_40pts": [
-    {"name": "1998 Subaru Impreza 22B-STI Version", "est_value": "цены нет"},
-    {"name": "2018 Mercedes-AMG GT 4-Door Coupe", "est_value": "цены нет"}
-  ],
-  "trading_advice": "Снайпинг 22B-STI: ищите лоты с выкупом сразу после открытия сезона, пока конкуренция низкая; для 911 Carrera S и 488 GTB проверяйте аукцион в первые 10 минут после сброса наград."
+  "current_season": "Ожидание данных FH6",
+  "series_number": "Ожидание данных FH6",
+  "series_rewards": "Ожидание данных FH6",
+  "cars_20pts": [{"name": "Ожидание данных FH6", "est_value": "0"}],
+  "cars_40pts": [{"name": "Ожидание данных FH6", "est_value": "0"}],
+  "trading_advice": "Ожидание данных FH6"
 }
