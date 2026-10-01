@@ -199,7 +199,11 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
   Future<void> _fetchPlaylistData() async {
     setState(() { _isLoading = true; _errorMsg = ""; });
     try {
-      final res = await http.get(Uri.parse(PLAYLIST_FEED_URL)).timeout(const Duration(seconds: 10));
+      // ОБХОД КЭША GITHUB: Добавляем уникальную метку времени к ссылке
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final uncashedUrl = "$PLAYLIST_FEED_URL&t=$timestamp";
+      
+      final res = await http.get(Uri.parse(uncashedUrl)).timeout(const Duration(seconds: 10));
       if (!mounted) return;
 
       if (res.statusCode == 200) {
