@@ -505,6 +505,8 @@ class _ScannerTabState extends State<ScannerTab> {
   bool _isScanning = false;
   bool _isTorchOn = false;
   
+  double _absoluteMaxY = 1.0; // Абсолютная высота экрана для стабилизации прицела
+  
   int _targetMarketValue = 20000000;
   double _desiredDiscount = 0.30; 
   
@@ -512,7 +514,7 @@ class _ScannerTabState extends State<ScannerTab> {
   String _detectedCarName = "";
   bool _isSnipeAlert = false;
   String _lastRawText = "Готов к сканированию...";
-  String _statusBanner = "Совместите зоны на экране с лотом";
+  String _statusBanner = "Наведите зеленую рамку ровно на один лот";
 
   @override
   void initState() {
@@ -568,12 +570,11 @@ class _ScannerTabState extends State<ScannerTab> {
           final recognizedText = await _textRecognizer.processImage(inputImage);
           if (!mounted) break;
 
-          double maxY = 1.0;
-          double maxX = 1.0;
+          double currentMaxY = 1.0;
           for (TextBlock block in recognizedText.blocks) {
-            if (block.boundingBox.bottom > maxY) maxY = block.boundingBox.bottom;
-            if (block.boundingBox.right > maxX) maxX = block.boundingBox.right;
+            if (block.boundingBox.bottom > currentMaxY) currentMaxY = block.boundingBox.bottom;
           }
+          if (currentMaxY > _absoluteMaxY) _absoluteMaxY = currentMaxY; // Фиксируем высоту экрана
 
           String priceText = "";
           String nameText = "";
@@ -581,41 +582,52 @@ class _ScannerTabState extends State<ScannerTab> {
           for (TextBlock block in recognizedText.blocks) {
             for (TextLine line in block.lines) {
               double lineCenterY = line.boundingBox.top + (line.boundingBox.height / 2);
-              double lineCenterX = line.boundingBox.left + (line.boundingBox.width / 2);
 
-              if (lineCenterY > (maxY * 0.42) && lineCenterY < (maxY * 0.58)) {
-                
-                // ИЗМЕНЕНИЕ 1: Идеальные координаты колонок. 
-                // Выкуп теперь между 50% и 80% (ровно над нужной цифрой), а правая панель отсекается.
-                if (lineCenterX > (maxX * 0.50) && lineCenterX < (maxX * 0.80)) {
+              // Берем очень узкую полосу ровно по центру экрана (10% высоты)
+              if (lineCenterY > (_absoluteMaxY * 0.45) && lineCenterY < (_absoluteMaxY * 0.55)) {
                   priceText += line.text + " ";
-                } 
-                else if (lineCenterX < (maxX * 0.40)) {
                   nameText += line.text + " ";
-                }
               }
             }
           }
 
           setState(() {
-            _lastRawText = "Выкуп OCR: " + (priceText.isEmpty ? "Пусто" : priceText);
+            _lastRawText = "Сырой OCR: " + (priceText.isEmpty ? "Пусто" : priceText);
           });
 
-          // ИЗМЕНЕНИЕ 2: Умный пылесос. 
-          // Теперь мы не удаляем всё слепо, а сначала склеиваем пробелы в тысячах (6 000 000 -> 6000000)
-          String rawCleaned = priceText;
-          for (int i = 0; i < 2; i++) {
-            rawCleaned = rawCleaned.replaceAllMapped(RegExp(r'(\d)\s+(\d{3})(?!\d)'), (Match m) => '${m[1]}${m[2]}');
-          }
-
-          // Вытаскиваем только настоящие, большие числа (игнорируя 656, 2023 и т.д.)
-          final priceMatches = RegExp(r'\d+').allMatches(rawCleaned);
+          // ==========================================
+          // НОВЫЙ АЛГОРИТМ: "Умный Реконструктор Цен"
+          // ==========================================
+          List<String> parts = priceText.split(RegExp(r'\s+'));
           List<int> validPrices = [];
-          for (final match in priceMatches) {
-            int? parsedNum = int.tryParse(match.group(0)!);
-            if (parsedNum != null && parsedNum >= 10000 && parsedNum <= 20000000) {
-              validPrices.add(parsedNum);
+          String currentNumStr = "";
+          
+          for (String p in parts) {
+            String cleanP = p.replaceAll(RegExp(r'[^0-9]'), ''); // Оставляем только цифры
+            if (cleanP.isEmpty) continue;
+
+            if (currentNumStr.isNotEmpty && cleanP.length == 3) {
+              // Если часть состоит из 3 цифр (например "000"), приклеиваем к прошлой
+              currentNumStr += cleanP;
+            } else if (currentNumStr.isNotEmpty && cleanP.length == 4 && cleanP.startsWith('000')) {
+              // Если OCR захватил стрелочку (например "0004"), отрезаем мусор
+              currentNumStr += cleanP.substring(0, 3);
+              int? val = int.tryParse(currentNumStr);
+              if (val != null && val >= 10000 && val <= 20000000) validPrices.add(val);
+              currentNumStr = ""; // сброс
+            } else {
+              // Сохраняем предыдущее собранное число
+              if (currentNumStr.isNotEmpty) {
+                int? val = int.tryParse(currentNumStr);
+                if (val != null && val >= 10000 && val <= 20000000) validPrices.add(val);
+              }
+              currentNumStr = cleanP; // начинаем новое число
             }
+          }
+          // Не забываем добавить последнее число в строке
+          if (currentNumStr.isNotEmpty) {
+            int? val = int.tryParse(currentNumStr);
+            if (val != null && val >= 10000 && val <= 20000000) validPrices.add(val);
           }
 
           // Логика названия машины (без изменений)
@@ -632,10 +644,11 @@ class _ScannerTabState extends State<ScannerTab> {
           if (guessedName.isNotEmpty) _detectedCarName = guessedName;
 
           if (validPrices.isNotEmpty) {
-            int targetPrice = validPrices.reduce((curr, next) => curr > next ? curr : next);
+            // Выкуп ВСЕГДА больше ставки. Берем самое большое из найденных чисел.
+            int targetPrice = validPrices.reduce((a, b) => a > b ? a : b);
             _processPrice(targetPrice);
           } else {
-            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Совместите зоны на экране с лотом"; });
+            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Наведите зеленую рамку ровно на один лот"; });
           }
         } catch (e) {
           if (mounted) setState(() => _lastRawText = "Ошибка распознавания");
@@ -643,7 +656,7 @@ class _ScannerTabState extends State<ScannerTab> {
           _isProcessing = false;
         }
       }
-      await Future.delayed(const Duration(milliseconds: 1200));
+      await Future.delayed(const Duration(milliseconds: 1000));
     }
   }
 
@@ -654,7 +667,7 @@ class _ScannerTabState extends State<ScannerTab> {
       _detectedPrice = price;
       if (price <= alertThreshold) {
         _isSnipeAlert = true;
-        _statusBanner = "🔥 СНАЙП! Цена: $price CR (Выгода > ${(_desiredDiscount * 100).toInt()}%)";
+        _statusBanner = "🔥 СНАЙП! Выкуп: $price CR (Выгода > ${(_desiredDiscount * 100).toInt()}%)";
         HapticFeedback.heavyImpact();
       } else {
         _isSnipeAlert = false;
@@ -803,7 +816,6 @@ class _ScannerTabState extends State<ScannerTab> {
             ),
           ),
           
-          // НОВЫЙ ЧЕТЫРЕХЗОННЫЙ ПРИЦЕЛ
           Center(
             child: Container(
               width: MediaQuery.of(context).size.width * 0.95,
@@ -812,17 +824,6 @@ class _ScannerTabState extends State<ScannerTab> {
                   border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white54, width: 2.0),
                   boxShadow: _isSnipeAlert ? [BoxShadow(color: Colors.greenAccent.withOpacity(0.6), blurRadius: 12, spreadRadius: 3)] : [],
                   borderRadius: BorderRadius.circular(8)),
-              child: Row(
-                children: [
-                  Expanded(flex: 40, child: Container(color: Colors.blueAccent.withOpacity(0.1), child: Center(child: Text("НАЗВАНИЕ", style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.bold))))),
-                  Container(width: 1, color: Colors.white24),
-                  Expanded(flex: 15, child: Container(child: Center(child: Text("СТАВКА", style: TextStyle(color: Colors.white38, fontSize: 10))))),
-                  Container(width: 1, color: Colors.white24),
-                  Expanded(flex: 25, child: Container(color: Colors.greenAccent.withOpacity(0.15), child: Center(child: Text("ВЫКУП", style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold))))),
-                  Container(width: 1, color: Colors.white24),
-                  Expanded(flex: 20, child: Container(child: Center(child: Text("ПАНЕЛЬ (Игнор)", style: TextStyle(color: Colors.white38, fontSize: 9))))),
-                ],
-              ),
             ),
           ),
 
