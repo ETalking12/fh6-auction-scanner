@@ -512,7 +512,7 @@ class _ScannerTabState extends State<ScannerTab> {
   String _detectedCarName = "";
   bool _isSnipeAlert = false;
   String _lastRawText = "Готов к сканированию...";
-  String _statusBanner = "Совместите зоны на экране с лотом";
+  String _statusBanner = "Вместите лоты в окно сканера";
 
   @override
   void initState() {
@@ -568,99 +568,81 @@ class _ScannerTabState extends State<ScannerTab> {
           final recognizedText = await _textRecognizer.processImage(inputImage);
           if (!mounted) break;
 
-          // ==========================================
-          // 1. ДИНАМИЧЕСКИЙ АВТОФОКУС: Ищем физический центр текста
-          // ==========================================
-          double currentMinY = double.infinity;
-          double currentMaxY = 0;
-          double currentMaxX = 0;
+          // Ищем правый край текста (панели аукциона)
+          double maxTextX = 0;
+          double maxTextY = 0;
+          double minTextY = double.infinity;
           
           for (TextBlock block in recognizedText.blocks) {
-            if (block.boundingBox.top < currentMinY) currentMinY = block.boundingBox.top;
-            if (block.boundingBox.bottom > currentMaxY) currentMaxY = block.boundingBox.bottom;
-            if (block.boundingBox.right > currentMaxX) currentMaxX = block.boundingBox.right;
+            if (block.boundingBox.right > maxTextX) maxTextX = block.boundingBox.right;
+            if (block.boundingBox.bottom > maxTextY) maxTextY = block.boundingBox.bottom;
+            if (block.boundingBox.top < minTextY) minTextY = block.boundingBox.top;
           }
 
-          if (currentMinY == double.infinity) {
-              _isProcessing = false;
-              await Future.delayed(const Duration(milliseconds: 500));
-              continue;
+          if (maxTextX < 100) {
+            _isProcessing = false;
+            await Future.delayed(const Duration(milliseconds: 500));
+            continue;
           }
 
-          double frameHeight = currentMaxY - currentMinY;
-          double midY = currentMinY + (frameHeight / 2);
-          
-          // Лазерная полоса ровно в центре того, что видит камера (отсекает 4:3 / 16:9 баги)
-          double targetTop = midY - (frameHeight * 0.08);
-          double targetBottom = midY + (frameHeight * 0.08);
+          // Отрезаем шапку игры (баланс кредитов)
+          double safeTop = minTextY + ((maxTextY - minTextY) * 0.15);
 
-          String priceText = "";
+          List<int> screenBuyouts = [];
           String nameText = "";
-          
+          String debugBuyouts = "";
+
+          // Обрабатываем каждую строчку индивидуально
           for (TextBlock block in recognizedText.blocks) {
             for (TextLine line in block.lines) {
-              double lineCenterY = line.boundingBox.top + (line.boundingBox.height / 2);
-              double lineCenterX = line.boundingBox.left + (line.boundingBox.width / 2);
+              double cy = line.boundingBox.top + (line.boundingBox.height / 2);
+              if (cy < safeTop) continue; // Игнорируем шапку
 
-              if (lineCenterY > targetTop && lineCenterY < targetBottom) {
-                // Выкуп
-                if (lineCenterX > (currentMaxX * 0.45) && lineCenterX < (currentMaxX * 0.85)) {
-                  priceText += line.text + " ";
+              String lineBuyoutText = "";
+              for (TextElement element in line.elements) {
+                double cx = element.boundingBox.left + (element.boundingBox.width / 2);
+                
+                // ВАЖНО: Берем только правую сторону экрана (> 62%), где физически находится ВЫКУП. 
+                // Ставки слева просто игнорируются железобетонно.
+                if (cx > maxTextX * 0.62) {
+                  lineBuyoutText += element.text + " ";
                 } 
-                // Название
-                else if (lineCenterX < (currentMaxX * 0.40)) {
-                  nameText += line.text + " ";
+                // Названия машин
+                else if (cx > maxTextX * 0.20 && cx < maxTextX * 0.45) {
+                  nameText += element.text + " ";
+                }
+              }
+
+              if (lineBuyoutText.trim().isNotEmpty) {
+                // Ищем нормальные цены с пробелами (например "20 000 000")
+                Iterable<RegExpMatch> spaced = RegExp(r'\b\d{1,3}(?:\s+\d{3})+\b').allMatches(lineBuyoutText);
+                for (var m in spaced) {
+                  int? val = int.tryParse(m.group(0)!.replaceAll(RegExp(r'\s+'), ''));
+                  if (val != null && val >= 10000 && val <= 30000000) {
+                    screenBuyouts.add(val);
+                    debugBuyouts += val.toString() + " ";
+                  }
+                }
+                
+                // Ищем слитные цены на случай ошибок (например "20000000")
+                Iterable<RegExpMatch> solid = RegExp(r'\b\d{5,8}\b').allMatches(lineBuyoutText);
+                for (var m in solid) {
+                  int? val = int.tryParse(m.group(0)!);
+                  // Чтобы не добавить то же самое число дважды
+                  if (val != null && val >= 10000 && val <= 30000000 && !screenBuyouts.contains(val)) {
+                    screenBuyouts.add(val);
+                    debugBuyouts += val.toString() + " ";
+                  }
                 }
               }
             }
           }
 
-          // ==========================================
-          // 2. УМНЫЙ ПАРСЕР ЦЕН FORZA
-          // ==========================================
-          String rawCleaned = priceText;
-          
-          // Чиним баг со стрелочкой (0004 -> 000)
-          rawCleaned = rawCleaned.replaceAll('0004', '000');
-          rawCleaned = rawCleaned.replaceAll(RegExp(r'000\s*4\b'), '000');
-          
-          // Удаляем всё, кроме цифр и пробелов
-          rawCleaned = rawCleaned.replaceAll(RegExp(r'[^0-9\s]'), ' ');
-          rawCleaned = rawCleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
-
-          List<int> validPrices = [];
-          List<String> words = rawCleaned.split(' ');
-          String currentPriceStr = "";
-
-          for (String word in words) {
-            if (word.isEmpty) continue;
-            
-            String cleanWord = word;
-            // Чиним баг значка CR (00020 -> 20)
-            if (cleanWord.length > 3 && cleanWord.startsWith('000') && cleanWord != "000") {
-              cleanWord = cleanWord.replaceFirst(RegExp(r'^0+'), '');
-            }
-
-            if (currentPriceStr.isNotEmpty && cleanWord.length == 3) {
-              currentPriceStr += cleanWord; // Склеиваем тысячи
-            } else {
-              if (currentPriceStr.isNotEmpty) {
-                int? val = int.tryParse(currentPriceStr);
-                if (val != null && val >= 10000 && val <= 20000000) validPrices.add(val);
-              }
-              currentPriceStr = cleanWord;
-            }
-          }
-          if (currentPriceStr.isNotEmpty) {
-            int? val = int.tryParse(currentPriceStr);
-            if (val != null && val >= 10000 && val <= 20000000) validPrices.add(val);
-          }
-
           setState(() {
-            _lastRawText = "Выкуп OCR: " + (priceText.isEmpty ? "Пусто" : rawCleaned);
+            _lastRawText = "Найдено выкупов: " + (debugBuyouts.isEmpty ? "0" : debugBuyouts);
           });
 
-          // Логика названия машины (без изменений)
+          // Логика названия машины
           final wordRegex = RegExp(r'\b[A-Za-zА-Яа-я0-9]{2,15}\b');
           final wordMatches = wordRegex.allMatches(nameText);
           List<String> validWords = [];
@@ -673,19 +655,20 @@ class _ScannerTabState extends State<ScannerTab> {
           String guessedName = validWords.take(3).join(" ");
           if (guessedName.isNotEmpty) _detectedCarName = guessedName;
 
-          if (validPrices.isNotEmpty) {
-            int targetPrice = validPrices.reduce((a, b) => a > b ? a : b);
-            _processPrice(targetPrice);
+          if (screenBuyouts.isNotEmpty) {
+            // Если на экране несколько лотов, берем ЛУЧШУЮ сделку (минимальную цену выкупа из найденных)
+            int bestPriceOnScreen = screenBuyouts.reduce((a, b) => a < b ? a : b);
+            _processPrice(bestPriceOnScreen);
           } else {
-            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Совместите зоны на экране с лотом"; });
+            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Вместите лоты в окно сканера"; });
           }
         } catch (e) {
-          if (mounted) setState(() => _lastRawText = "Ошибка распознавания: $e");
+          if (mounted) setState(() => _lastRawText = "Ошибка распознавания");
         } finally {
           _isProcessing = false;
         }
       }
-      await Future.delayed(const Duration(milliseconds: 800)); // Чуть ускорил цикл сканирования
+      await Future.delayed(const Duration(milliseconds: 1000));
     }
   }
 
@@ -845,23 +828,20 @@ class _ScannerTabState extends State<ScannerTab> {
             ),
           ),
           
+          // НОВЫЙ БОЛЬШОЙ ВИЗУАЛЬНЫЙ ПРИЦЕЛ
           Center(
             child: Container(
               width: MediaQuery.of(context).size.width * 0.95,
-              height: 70,
+              height: MediaQuery.of(context).size.height * 0.55, // Окно огромное, вместит 4-5 лотов
               decoration: BoxDecoration(
-                  border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white54, width: 2.0),
+                  border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white38, width: 2.0),
                   boxShadow: _isSnipeAlert ? [BoxShadow(color: Colors.greenAccent.withOpacity(0.6), blurRadius: 12, spreadRadius: 3)] : [],
                   borderRadius: BorderRadius.circular(8)),
               child: Row(
                 children: [
-                  Expanded(flex: 40, child: Container(color: Colors.blueAccent.withOpacity(0.1), child: Center(child: Text("НАЗВАНИЕ", style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.bold))))),
-                  Container(width: 1, color: Colors.white24),
-                  Expanded(flex: 15, child: Container(child: Center(child: Text("СТАВКА", style: TextStyle(color: Colors.white38, fontSize: 10))))),
-                  Container(width: 1, color: Colors.white24),
-                  Expanded(flex: 25, child: Container(color: Colors.greenAccent.withOpacity(0.15), child: Center(child: Text("ВЫКУП", style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold))))),
-                  Container(width: 1, color: Colors.white24),
-                  Expanded(flex: 20, child: Container(child: Center(child: Text("ПАНЕЛЬ (Игнор)", style: TextStyle(color: Colors.white38, fontSize: 9))))),
+                  Expanded(flex: 62, child: Container(color: Colors.blueAccent.withOpacity(0.05), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("ИГНОР (СТАВКИ)", style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)))))),
+                  Container(width: 2, color: _isSnipeAlert ? Colors.greenAccent : Colors.white24),
+                  Expanded(flex: 38, child: Container(color: Colors.greenAccent.withOpacity(0.15), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("ЗОНА ВЫКУПА", style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)))))),
                 ],
               ),
             ),
