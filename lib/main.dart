@@ -309,7 +309,7 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
                       _buildSpecRow("Ликвидность:", "🔥 Дефицит (Топ)"),
                       const SizedBox(height: 12),
                       const Text(
-                        "💡 Совет по снайпингу: Модель пользуется повышенным спросом в текущей серии. Скупайте сезонные лоты по выгодным ценам ниже рынка.",
+                        "💡 Совет по снайпингу: Модель пользуется повышенным спросом в текущей серии. Скупайте сезонные лоты по выгодным ценам мгновенного выкупа.",
                         style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
                       ),
                       const SizedBox(height: 16),
@@ -633,10 +633,6 @@ class _ScannerTabState extends State<ScannerTab> {
           final recognizedText = await _textRecognizer.processImage(inputImage);
           if (!mounted) break;
 
-          List<int> activePrices = [];
-          String nameText = "";
-          String debugText = "";
-
           List<Map<String, dynamic>> allLines = [];
           for (TextBlock block in recognizedText.blocks) {
             for (TextLine line in block.lines) {
@@ -650,92 +646,119 @@ class _ScannerTabState extends State<ScannerTab> {
             }
           }
 
+          if (allLines.isEmpty) {
+            _isProcessing = false;
+            continue;
+          }
+
           allLines.sort((a, b) => (a['top'] as double).compareTo(b['top'] as double));
 
-          for (var line in allLines) {
-            String text = line['text'] as String;
-            String textUpper = text.toUpperCase();
+          // Горизонтальное разделение на отдельные карточки лотов
+          List<List<Map<String, dynamic>>> cards = [];
+          List<Map<String, dynamic>> currentCard = [];
+          double? lastTop;
 
-            double leftPos = line['left'] as double;
-            if (leftPos < 300 && !textUpper.contains("CR") && !textUpper.contains("МИН") && !textUpper.contains("MIN")) {
-              if (!RegExp(r'^\d+$').hasMatch(text)) {
-                nameText += text + " ";
+          for (var line in allLines) {
+            double top = line['top'] as double;
+            if (lastTop == null || (top - lastTop) < 65) {
+              currentCard.add(line);
+            } else {
+              if (currentCard.isNotEmpty) cards.add(currentCard);
+              currentCard = [line];
+            }
+            lastTop = top;
+          }
+          if (currentCard.isNotEmpty) cards.add(currentCard);
+
+          int bestInstantBuyout = 0;
+          String bestCarName = "";
+          String debugText = "";
+
+          for (var card in cards) {
+            String cardText = "";
+            bool isSold = false;
+            bool isNotSold = false;
+            List<int> cardNumbers = [];
+
+            for (var line in card) {
+              String text = line['text'] as String;
+              String textUpper = text.toUpperCase();
+              cardText += "$text ";
+
+              if (textUpper.contains("НЕ ПРОДАНО")) {
+                isNotSold = true;
+              } else if (textUpper.contains("ПРОДАНО") || textUpper.contains("SOLD")) {
+                isSold = true;
+              }
+
+              if (textUpper.contains("CR") || RegExp(r'\d{1,3}(?:\s?\d{3})+').hasMatch(text)) {
+                String cleaned = text.replaceAll(RegExp(r'[^0-9\s]'), '').trim();
+                Iterable<RegExpMatch> matches = RegExp(r'\b\d{1,3}(?:\s?\d{3})+\b|\b\d{5,8}\b').allMatches(cleaned);
+                
+                for (var m in matches) {
+                  int? val = int.tryParse(m.group(0)!.replaceAll(RegExp(r'\s+'), ''));
+                  if (val != null && val >= 15000 && val <= 30000000) {
+                    cardNumbers.add(val);
+                  }
+                }
               }
             }
 
-            // Фоновое пополнение статистики по завершенным сделкам
-            bool isSoldCard = textUpper.contains("ПРОДАНО") || textUpper.contains("SOLD");
-
-            if (textUpper.contains("CR") || RegExp(r'\d{1,3}(?:\s?\d{3})+').hasMatch(text)) {
-              String cleaned = text.replaceAll(RegExp(r'[^0-9\s]'), '').trim();
-              Iterable<RegExpMatch> matches = RegExp(r'\b\d{1,3}(?:\s?\d{3})+\b|\b\d{5,8}\b').allMatches(cleaned);
-              
-              List<int> lineNumbers = [];
-              for (var m in matches) {
-                int? val = int.tryParse(m.group(0)!.replaceAll(RegExp(r'\s+'), ''));
-                if (val != null && val >= 15000 && val <= 30000000) {
-                  lineNumbers.add(val);
+            // Фоновое пополнение статистики закрытых торгов
+            if (isSold && !isNotSold) {
+              if (cardNumbers.isNotEmpty) {
+                int winningBid = cardNumbers.first;
+                if (!_sessionScannedPrices.contains(winningBid) && winningBid > 50000) {
+                  _sessionScannedPrices.add(winningBid);
+                  int sum = _sessionScannedPrices.reduce((a, b) => a + b);
+                  _sessionAveragePrice = (sum / _sessionScannedPrices.length).round();
+                  _saveSessionPrices();
                 }
               }
+              continue;
+            }
 
-              if (lineNumbers.isNotEmpty) {
-                if (isSoldCard) {
-                  int soldPrice = lineNumbers.first;
-                  if (!_sessionScannedPrices.contains(soldPrice)) {
-                    _sessionScannedPrices.add(soldPrice);
-                    int sum = _sessionScannedPrices.reduce((a, b) => a + b);
-                    _sessionAveragePrice = (sum / _sessionScannedPrices.length).round();
-                    _saveSessionPrices();
-                  }
-                }
+            // Для активных лотов: правая колонка — цена мгновенного выкупа «здесь и сейчас»
+            if (cardNumbers.isNotEmpty) {
+              int instantBuyoutPrice = cardNumbers.last;
 
-                // Сбор цен для активного сканирования и снайпинга
-                if (lineNumbers.length >= 2) {
-                  int buyout = lineNumbers.last;
-                  activePrices.add(buyout);
-                  debugText += "Выкуп: $buyout ";
-                } else if (lineNumbers.length == 1 && leftPos > 200) {
-                  int val = lineNumbers.first;
-                  activePrices.add(val);
-                  debugText += "Цена: $val ";
-                }
+              if (bestInstantBuyout == 0 || instantBuyoutPrice < bestInstantBuyout) {
+                bestInstantBuyout = instantBuyoutPrice;
+                
+                String rawName = cardText.replaceAll(RegExp(r'[^A-Za-zА-Яа-я0-9\s]'), '').trim();
+                bestCarName = _matchCarName(rawName);
               }
             }
           }
 
           setState(() {
-            _lastRawText = "Цены на экране: " + (debugText.isEmpty ? "нет" : debugText);
+            _lastRawText = "Мгновенный выкуп: $bestInstantBuyout | Рынок: $_sessionAveragePrice";
           });
 
-          String guessedName = nameText.replaceAll(RegExp(r'[^A-Za-zА-Яа-я0-9\s]'), '').trim();
-          if (guessedName.isNotEmpty) {
-            _detectedCarName = _matchCarName(guessedName);
-          }
-
-          if (activePrices.isNotEmpty) {
-            int bestPriceOnScreen = activePrices.reduce((a, b) => a < b ? a : b);
-            
+          if (bestInstantBuyout > 0) {
             int baselineMarket = _sessionAveragePrice > 0 ? _sessionAveragePrice : _targetMarketValue;
             int alertThreshold = (baselineMarket * (1 - _desiredDiscount)).round();
 
             setState(() {
-              _detectedPrice = bestPriceOnScreen;
-              if (bestPriceOnScreen <= alertThreshold) {
+              _detectedPrice = bestInstantBuyout;
+              if (bestCarName.isNotEmpty) _detectedCarName = bestCarName;
+
+              if (bestInstantBuyout <= alertThreshold) {
                 _isSnipeAlert = true;
-                int diff = baselineMarket - bestPriceOnScreen;
+                int diff = baselineMarket - bestInstantBuyout;
                 double percent = (diff / baselineMarket) * 100;
-                _statusBanner = "🔥 СНАЙП! Цена: $bestPriceOnScreen CR (Ниже рынка на ${percent.toStringAsFixed(1)}%)";
+                _statusBanner = "🔥 СНАЙП! Забрать сейчас: $bestInstantBuyout CR (Ниже рынка на ${percent.toStringAsFixed(1)}%)";
                 HapticFeedback.heavyImpact();
               } else {
                 _isSnipeAlert = false;
-                _statusBanner = "Лот: $bestPriceOnScreen CR | Средний рынок: $baselineMarket CR";
+                _statusBanner = "Мгновенный выкуп: $bestInstantBuyout CR | Рынок: $baselineMarket CR";
               }
             });
           } else {
-            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Вместите лоты в окно сканера"; });
+            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Ожидание активных лотов..."; });
           }
         } catch (e) {
-          if (mounted) setState(() => _lastRawText = "Ошибка распознавания");
+          if (mounted) setState(() => _lastRawText = "Ошибка сканирования");
         } finally {
           _isProcessing = false;
         }
@@ -925,7 +948,7 @@ class _ScannerTabState extends State<ScannerTab> {
                 children: [
                   Expanded(flex: 65, child: Container(color: Colors.blueAccent.withOpacity(0.05), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("СТАВКИ / АКТИВНЫЕ ЛОТЫ", style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)))))),
                   Container(width: 2, color: _isSnipeAlert ? Colors.greenAccent : Colors.white24),
-                  Expanded(flex: 35, child: Container(color: Colors.greenAccent.withOpacity(0.15), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("ВЫКУП", style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)))))),
+                  Expanded(flex: 35, child: Container(color: Colors.greenAccent.withOpacity(0.15), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("МГН. ВЫКУП", style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)))))),
                 ],
               ),
             ),
