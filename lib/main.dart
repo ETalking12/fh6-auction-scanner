@@ -678,11 +678,12 @@ class _ScannerTabState extends State<ScannerTab> {
             String cardText = "";
             bool isSold = false;
             bool isNotSold = false;
-            List<int> cardNumbers = [];
+            List<int> rightSideBuyouts = [];
 
             for (var line in card) {
               String text = line['text'] as String;
               String textUpper = text.toUpperCase();
+              double leftPos = line['left'] as double;
               cardText += "$text ";
 
               if (textUpper.contains("НЕ ПРОДАНО")) {
@@ -691,48 +692,37 @@ class _ScannerTabState extends State<ScannerTab> {
                 isSold = true;
               }
 
-              if (textUpper.contains("CR") || RegExp(r'\d{1,3}(?:\s?\d{3})+').hasMatch(text)) {
-                String cleaned = text.replaceAll(RegExp(r'[^0-9\s]'), '').trim();
-                Iterable<RegExpMatch> matches = RegExp(r'\b\d{1,3}(?:\s?\d{3})+\b|\b\d{5,8}\b').allMatches(cleaned);
-                
-                for (var m in matches) {
-                  int? val = int.tryParse(m.group(0)!.replaceAll(RegExp(r'\s+'), ''));
-                  if (val != null && val >= 15000 && val <= 30000000) {
-                    cardNumbers.add(val);
+              // ЖЕСТКИЙ ЯКОРЬ: Строка обязательно должна содержать "CR"
+              if (textUpper.contains("CR")) {
+                String cleaned = text.replaceAll(RegExp(r'[^0-9]'), '');
+                int? val = int.tryParse(cleaned);
+
+                if (val != null && val >= 100000 && val <= 35000000) {
+                  // Проверка по координате: только правая половина карточки (мгновенный выкуп)
+                  if (leftPos > 350) {
+                    rightSideBuyouts.add(val);
                   }
                 }
               }
             }
 
-            // Фоновое пополнение статистики закрытых торгов
-            if (isSold && !isNotSold) {
-              if (cardNumbers.isNotEmpty) {
-                int winningBid = cardNumbers.first;
-                if (!_sessionScannedPrices.contains(winningBid) && winningBid > 50000) {
-                  _sessionScannedPrices.add(winningBid);
-                  int sum = _sessionScannedPrices.reduce((a, b) => a + b);
-                  _sessionAveragePrice = (sum / _sessionScannedPrices.length).round();
-                  _saveSessionPrices();
-                }
-              }
-              continue;
-            }
+            if (isSold && !isNotSold) continue; // Пропускаем завершенные торги
 
-            // Для активных лотов: правая колонка — цена мгновенного выкупа «здесь и сейчас»
-            if (cardNumbers.isNotEmpty) {
-              int instantBuyoutPrice = cardNumbers.last;
+            if (rightSideBuyouts.isNotEmpty) {
+              int buyoutPrice = rightSideBuyouts.reduce((a, b) => a < b ? a : b);
 
-              if (bestInstantBuyout == 0 || instantBuyoutPrice < bestInstantBuyout) {
-                bestInstantBuyout = instantBuyoutPrice;
+              if (bestInstantBuyout == 0 || buyoutPrice < bestInstantBuyout) {
+                bestInstantBuyout = buyoutPrice;
                 
                 String rawName = cardText.replaceAll(RegExp(r'[^A-Za-zА-Яа-я0-9\s]'), '').trim();
                 bestCarName = _matchCarName(rawName);
+                debugText = "Лот: $bestCarName | Выкуп: $bestInstantBuyout CR";
               }
             }
           }
 
           setState(() {
-            _lastRawText = "Мгновенный выкуп: $bestInstantBuyout | Рынок: $_sessionAveragePrice";
+            _lastRawText = debugText.isNotEmpty ? debugText : "Поиск по якорю CR...";
           });
 
           if (bestInstantBuyout > 0) {
@@ -948,7 +938,7 @@ class _ScannerTabState extends State<ScannerTab> {
                 children: [
                   Expanded(flex: 65, child: Container(color: Colors.blueAccent.withOpacity(0.05), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("СТАВКИ / АКТИВНЫЕ ЛОТЫ", style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)))))),
                   Container(width: 2, color: _isSnipeAlert ? Colors.greenAccent : Colors.white24),
-                  Expanded(flex: 35, child: Container(color: Colors.greenAccent.withOpacity(0.15), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("МГН. ВЫКУП", style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)))))),
+                  Expanded(flex: 35, child: Container(color: Colors.greenAccent.withOpacity(0.15), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("МГН. ВЫКУП (CR)", style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)))))),
                 ],
               ),
             ),
