@@ -11,17 +11,17 @@ def fetch_latest_reddit_playlist():
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
     
-    # Ищем строго по флееру Festival Playlist, сортируем по самым новым
-    url = 'https://www.reddit.com/r/ForzaHorizon/search.json?q=flair_name%3A"Festival%20Playlist"&restrict_sr=1&sort=new&limit=2'
+    # Ищем сразу в двух сабреддитах по ключевым словам: FH6 + Series + (Rewards ИЛИ Playlist)
+    url = 'https://www.reddit.com/r/ForzaHorizon+ForzaHorizon6/search.json?q=title%3A"FH6"%20title%3A"Series"%20(title%3A"Rewards"%20OR%20title%3A"Playlist")&restrict_sr=1&sort=new&limit=3'
     
     try:
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             data = response.json()
             posts_text = ""
-            for post in data['data']['children']:
-                title = post['data']['title']
-                text = post['data']['selftext']
+            for post in data.get('data', {}).get('children', []):
+                title = post['data'].get('title', '')
+                text = post['data'].get('selftext', '')
                 posts_text += f"ЗАГОЛОВОК: {title}\nТЕКСТ: {text}\n\n"
             return posts_text
         return None
@@ -30,7 +30,8 @@ def fetch_latest_reddit_playlist():
         return None
 
 def update_playlist_json(reddit_context):
-    if not reddit_context or len(reddit_context) < 50:
+    # Если Reddit ничего не вернул или текст слишком короткий, ставим заглушку
+    if not reddit_context or len(reddit_context.strip()) < 20:
         return create_fallback_json()
 
     url = "https://api.deepseek.com/chat/completions"
@@ -41,10 +42,12 @@ def update_playlist_json(reddit_context):
 
     prompt = f"""
     Вы — парсер данных для базы аукциона Forza Horizon.
-    Проанализируйте свежий пост с Reddit и извлеките награды текущего сезона.
+    Проанализируйте свежие посты с Reddit и извлеките награды текущего сезона.
     
     ПРАВИЛО 1: Верните СТРОГО валидный JSON без форматирования Markdown (без ```json).
     ПРАВИЛО 2: Если текст не содержит четких наград, запишите "Ожидание данных FH6" и цену "0".
+    ПРАВИЛО 3: Извлекай данные ТОЛЬКО если пост описывает СВЕЖИЙ, стартовавший сезон (актуальную Series).
+    ПРАВИЛО 4: Убедись, что пост посвящен ИМЕННО Forza Horizon 6 (FH6). Если в тексте упоминается Forza Horizon 5 (FH5) или другие старые части — немедленно проигнорируй текст и верни "Ожидание данных FH6".
     
     Шаблон JSON:
     {{
@@ -80,8 +83,10 @@ def update_playlist_json(reddit_context):
             # Очистка на случай, если ИИ добавил маркдаун
             if result.startswith("```json"):
                 result = result[7:-3].strip()
+            elif result.startswith("```"):
+                result = result[3:-3].strip()
             
-            # Проверяем на валидность
+            # Проверяем на валидность формата
             parsed_json = json.loads(result)
             return parsed_json
         return create_fallback_json()
@@ -104,7 +109,7 @@ def create_fallback_json():
     }
 
 if __name__ == "__main__":
-    print("Получение данных с Reddit r/ForzaHorizon...")
+    print("Получение данных с Reddit r/ForzaHorizon и r/ForzaHorizon6...")
     reddit_data = fetch_latest_reddit_playlist()
     
     print("Генерация JSON через DeepSeek...")
