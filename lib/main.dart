@@ -514,6 +514,10 @@ class _ScannerTabState extends State<ScannerTab> {
   String _lastRawText = "Готов к сканированию...";
   String _statusBanner = "Вместите лоты в окно сканера";
 
+  // Локальная сессионная аналитика цен
+  final List<int> _sessionScannedPrices = [];
+  int _sessionAveragePrice = 0;
+
   @override
   void initState() {
     super.initState();
@@ -568,70 +572,63 @@ class _ScannerTabState extends State<ScannerTab> {
           final recognizedText = await _textRecognizer.processImage(inputImage);
           if (!mounted) break;
 
-          // Ищем правый край текста (панели аукциона)
-          double maxTextX = 0;
-          double maxTextY = 0;
-          double minTextY = double.infinity;
-          
-          for (TextBlock block in recognizedText.blocks) {
-            if (block.boundingBox.right > maxTextX) maxTextX = block.boundingBox.right;
-            if (block.boundingBox.bottom > maxTextY) maxTextY = block.boundingBox.bottom;
-            if (block.boundingBox.top < minTextY) minTextY = block.boundingBox.top;
-          }
-
-          if (maxTextX < 100) {
-            _isProcessing = false;
-            await Future.delayed(const Duration(milliseconds: 500));
-            continue;
-          }
-
-          // Отрезаем шапку игры (баланс кредитов)
-          double safeTop = minTextY + ((maxTextY - minTextY) * 0.15);
-
-          List<int> screenBuyouts = [];
+          List<int> cardBuyouts = [];
           String nameText = "";
           String debugBuyouts = "";
 
-          // Обрабатываем каждую строчку индивидуально
+          List<Map<String, dynamic>> allLines = [];
           for (TextBlock block in recognizedText.blocks) {
             for (TextLine line in block.lines) {
-              double cy = line.boundingBox.top + (line.boundingBox.height / 2);
-              if (cy < safeTop) continue; // Игнорируем шапку
+              allLines.add({
+                'text': line.text,
+                'top': line.boundingBox.top,
+                'left': line.boundingBox.left,
+                'right': line.boundingBox.right,
+                'bottom': line.boundingBox.bottom,
+              });
+            }
+          }
 
-              String lineBuyoutText = "";
-              for (TextElement element in line.elements) {
-                double cx = element.boundingBox.left + (element.boundingBox.width / 2);
-                
-                // ВАЖНО: Берем только правую сторону экрана (> 62%), где физически находится ВЫКУП. 
-                // Ставки слева просто игнорируются железобетонно.
-                if (cx > maxTextX * 0.62) {
-                  lineBuyoutText += element.text + " ";
-                } 
-                // Названия машин
-                else if (cx > maxTextX * 0.20 && cx < maxTextX * 0.45) {
-                  nameText += element.text + " ";
+          allLines.sort((a, b) => (a['top'] as double).compareTo(b['top'] as double));
+
+          for (var line in allLines) {
+            String text = line['text'] as String;
+            String textUpper = text.toUpperCase();
+
+            double leftPos = line['left'] as double;
+            if (leftPos < 300 && !textUpper.contains("CR") && !textUpper.contains("МИН") && !textUpper.contains("MIN")) {
+              if (!RegExp(r'^\d+$').hasMatch(text)) {
+                nameText += text + " ";
+              }
+            }
+
+            if (textUpper.contains("CR") || RegExp(r'\d{1,3}(?:\s?\d{3})+').hasMatch(text)) {
+              String cleaned = text.replaceAll(RegExp(r'[^0-9\s]'), '').trim();
+              Iterable<RegExpMatch> matches = RegExp(r'\b\d{1,3}(?:\s?\d{3})+\b|\b\d{5,8}\b').allMatches(cleaned);
+              
+              List<int> lineNumbers = [];
+              for (var m in matches) {
+                int? val = int.tryParse(m.group(0)!.replaceAll(RegExp(r'\s+'), ''));
+                if (val != null && val >= 15000 && val <= 30000000) {
+                  lineNumbers.add(val);
                 }
               }
 
-              if (lineBuyoutText.trim().isNotEmpty) {
-                // Ищем нормальные цены с пробелами (например "20 000 000")
-                Iterable<RegExpMatch> spaced = RegExp(r'\b\d{1,3}(?:\s+\d{3})+\b').allMatches(lineBuyoutText);
-                for (var m in spaced) {
-                  int? val = int.tryParse(m.group(0)!.replaceAll(RegExp(r'\s+'), ''));
-                  if (val != null && val >= 10000 && val <= 30000000) {
-                    screenBuyouts.add(val);
-                    debugBuyouts += val.toString() + " ";
+              if (lineNumbers.isNotEmpty) {
+                if (lineNumbers.length >= 2) {
+                  int buyoutCandidate = lineNumbers.last;
+                  if (!cardBuyouts.contains(buyoutCandidate)) {
+                    cardBuyouts.add(buyoutCandidate);
+                    debugBuyouts += buyoutCandidate.toString() + " ";
                   }
-                }
-                
-                // Ищем слитные цены на случай ошибок (например "20000000")
-                Iterable<RegExpMatch> solid = RegExp(r'\b\d{5,8}\b').allMatches(lineBuyoutText);
-                for (var m in solid) {
-                  int? val = int.tryParse(m.group(0)!);
-                  // Чтобы не добавить то же самое число дважды
-                  if (val != null && val >= 10000 && val <= 30000000 && !screenBuyouts.contains(val)) {
-                    screenBuyouts.add(val);
-                    debugBuyouts += val.toString() + " ";
+                } else if (lineNumbers.length == 1) {
+                  double lineLeft = line['left'] as double;
+                  if (lineLeft > 200) {
+                    int val = lineNumbers.first;
+                    if (!cardBuyouts.contains(val)) {
+                      cardBuyouts.add(val);
+                      debugBuyouts += val.toString() + " ";
+                    }
                   }
                 }
               }
@@ -639,25 +636,29 @@ class _ScannerTabState extends State<ScannerTab> {
           }
 
           setState(() {
-            _lastRawText = "Найдено выкупов: " + (debugBuyouts.isEmpty ? "0" : debugBuyouts);
+            _lastRawText = "Выкупы по CR: " + (debugBuyouts.isEmpty ? "0" : debugBuyouts);
           });
 
-          // Логика названия машины
           final wordRegex = RegExp(r'\b[A-Za-zА-Яа-я0-9]{2,15}\b');
           final wordMatches = wordRegex.allMatches(nameText);
           List<String> validWords = [];
           for (final m in wordMatches) {
             String word = m.group(0)!;
-            if (word.toUpperCase() == "MIN" || word.toUpperCase() == "МИН" || word.toUpperCase() == "CR") continue;
             if (RegExp(r'^\d+$').hasMatch(word)) continue;
             validWords.add(word);
           }
           String guessedName = validWords.take(3).join(" ");
           if (guessedName.isNotEmpty) _detectedCarName = guessedName;
 
-          if (screenBuyouts.isNotEmpty) {
-            // Если на экране несколько лотов, берем ЛУЧШУЮ сделку (минимальную цену выкупа из найденных)
-            int bestPriceOnScreen = screenBuyouts.reduce((a, b) => a < b ? a : b);
+          if (cardBuyouts.isNotEmpty) {
+            int bestPriceOnScreen = cardBuyouts.reduce((a, b) => a < b ? a : b);
+            
+            if (!_sessionScannedPrices.contains(bestPriceOnScreen)) {
+              _sessionScannedPrices.add(bestPriceOnScreen);
+              int sum = _sessionScannedPrices.reduce((a, b) => a + b);
+              _sessionAveragePrice = (sum / _sessionScannedPrices.length).round();
+            }
+
             _processPrice(bestPriceOnScreen);
           } else {
             if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Вместите лоты в окно сканера"; });
@@ -673,17 +674,17 @@ class _ScannerTabState extends State<ScannerTab> {
   }
 
   void _processPrice(int price) {
-    if (price < 10000 || !mounted) return;
+    if (price < 15000 || !mounted) return;
     int alertThreshold = (_targetMarketValue * (1 - _desiredDiscount)).round();
     setState(() {
       _detectedPrice = price;
       if (price <= alertThreshold) {
         _isSnipeAlert = true;
-        _statusBanner = "🔥 СНАЙП! Выкуп: $price CR (Выгода > ${(_desiredDiscount * 100).toInt()}%)";
+        _statusBanner = "🔥 СНАЙП! Выкуп: $price CR (Средняя: $_sessionAveragePrice CR)";
         HapticFeedback.heavyImpact();
       } else {
         _isSnipeAlert = false;
-        _statusBanner = "Цена Выкупа: $price CR (Маржинальность мала)";
+        _statusBanner = "Выкуп: $price CR | Средняя за сессию: $_sessionAveragePrice CR";
       }
     });
   }
@@ -702,11 +703,13 @@ class _ScannerTabState extends State<ScannerTab> {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text("Укажите текущую среднюю стоимость лота на рынке:", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                Text("Средняя цена по сканированиям: $_sessionAveragePrice CR", style: const TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 10),
+                const Text("Укажите целевую рыночную стоимость:", style: TextStyle(color: Colors.white70, fontSize: 12)),
                 const SizedBox(height: 10),
                 TextField(
                   controller: valController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: "Текущая рыночная цена (CR)", labelStyle: TextStyle(color: Colors.white54)),
+                  decoration: const InputDecoration(labelText: "Рыночная цена (CR)", labelStyle: TextStyle(color: Colors.white54)),
                 ),
                 const SizedBox(height: 20),
                 Text("Желаемая скидка от рынка: ${(tempDiscount * 100).toInt()}%", style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
@@ -735,9 +738,11 @@ class _ScannerTabState extends State<ScannerTab> {
   }
 
   void _showSaveDialog(int currentPrice, String guessedName) {
+    int initialMarket = _sessionAveragePrice > 0 ? _sessionAveragePrice : _targetMarketValue;
+
     final nameController = TextEditingController(text: guessedName);
     final priceController = TextEditingController(text: currentPrice.toString());
-    final marketPriceController = TextEditingController(text: _targetMarketValue.toString());
+    final marketPriceController = TextEditingController(text: initialMarket.toString());
     final projectedController = TextEditingController(text: "20000000"); 
 
     showDialog(
@@ -778,7 +783,7 @@ class _ScannerTabState extends State<ScannerTab> {
               String name = nameController.text.trim();
               if (name.isEmpty) name = "Неизвестная машина";
               int price = int.tryParse(priceController.text) ?? currentPrice;
-              int market = int.tryParse(marketPriceController.text) ?? _targetMarketValue;
+              int market = int.tryParse(marketPriceController.text) ?? initialMarket;
               int projected = int.tryParse(projectedController.text) ?? 20000000;
               
               widget.onAddToPortfolio(name, price, market, projected);
@@ -828,20 +833,19 @@ class _ScannerTabState extends State<ScannerTab> {
             ),
           ),
           
-          // НОВЫЙ БОЛЬШОЙ ВИЗУАЛЬНЫЙ ПРИЦЕЛ
           Center(
             child: Container(
               width: MediaQuery.of(context).size.width * 0.95,
-              height: MediaQuery.of(context).size.height * 0.55, // Окно огромное, вместит 4-5 лотов
+              height: MediaQuery.of(context).size.height * 0.55,
               decoration: BoxDecoration(
                   border: Border.all(color: _isSnipeAlert ? Colors.greenAccent : Colors.white38, width: 2.0),
                   boxShadow: _isSnipeAlert ? [BoxShadow(color: Colors.greenAccent.withOpacity(0.6), blurRadius: 12, spreadRadius: 3)] : [],
                   borderRadius: BorderRadius.circular(8)),
               child: Row(
                 children: [
-                  Expanded(flex: 62, child: Container(color: Colors.blueAccent.withOpacity(0.05), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("ИГНОР (СТАВКИ)", style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)))))),
+                  Expanded(flex: 65, child: Container(color: Colors.blueAccent.withOpacity(0.05), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("ИГНОР (СТАВКИ • КЛАССЫ)", style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)))))),
                   Container(width: 2, color: _isSnipeAlert ? Colors.greenAccent : Colors.white24),
-                  Expanded(flex: 38, child: Container(color: Colors.greenAccent.withOpacity(0.15), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("ЗОНА ВЫКУПА", style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)))))),
+                  Expanded(flex: 35, child: Container(color: Colors.greenAccent.withOpacity(0.15), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("ЗОНА ВЫКУПА (CR)", style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)))))),
                 ],
               ),
             ),
@@ -877,7 +881,7 @@ class _ScannerTabState extends State<ScannerTab> {
 }
 
 // ==========================================
-// 3. БАЗА ЦЕН (ПРОДВИНУТЫЙ АНАЛИТИЧЕСКИЙ ПАРСЕР)
+// 3. БАЗА ЦЕН
 // ==========================================
 class PriceDatabaseTab extends StatefulWidget {
   final Function(String name, int price, int marketPrice, int projectedPrice) onAddToPortfolio;
@@ -1215,7 +1219,7 @@ class _PriceDatabaseTabState extends State<PriceDatabaseTab> {
 }
 
 // ==========================================
-// 4. РАДАР С УМНОЙ ГРУППИРОВКОЙ И РУЧНЫМ ВВОДОМ
+// 4. РАДАР
 // ==========================================
 class WatchlistTab extends StatefulWidget {
   final List<WatchlistItem> portfolio;
@@ -1227,7 +1231,6 @@ class WatchlistTab extends StatefulWidget {
 }
 
 class _WatchlistTabState extends State<WatchlistTab> {
-  
   final List<String> _popularCars = [
     "2016 BENTLEY BENTAYGA", "ASTON MARTIN", "AUDI RS6", "BMW M3", "BMW M4", 
     "BUGATTI DIVO", "CHEVROLET CORVETTE", "FERRARI 599XX", "FERRARI F40", 
