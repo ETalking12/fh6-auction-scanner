@@ -4,9 +4,9 @@ import requests
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 
-def fetch_reddit_rss():
-    # Используем публичный JSON-эндпоинт Reddit
-    url = "https://www.reddit.com/r/ForzaHorizon/hot.json?limit=15"
+def fetch_reddit_posts():
+    # Забираем свежие посты из ленты сабреддита
+    url = "https://www.reddit.com/r/ForzaHorizon/new.json?limit=15"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
@@ -19,21 +19,16 @@ def fetch_reddit_rss():
             for post in data.get('data', {}).get('children', []):
                 title = post['data'].get('title', '')
                 text = post['data'].get('selftext', '')
-                
-                # Расширяем список ключевых слов на основе реальных постов с ващих скриншотов
-                lower_title = title.lower()
-                if "fh6" in lower_title or "series" in lower_title or "breakdown" in lower_title or "megathread" in lower_title:
-                    posts_text += f"ЗАГОЛОВОК: {title}\nТЕКСТ: {text}\n\n"
-                    
+                posts_text += f"ЗАГОЛОВОК: {title}\nТЕКСТ: {text}\n\n"
             return posts_text
         return None
     except Exception as e:
-        print(f"Ошибка получения данных: {e}")
+        print(f"Ошибка получения данных с Reddit: {e}")
         return None
 
 def update_playlist_json(reddit_context):
     if not reddit_context or len(reddit_context.strip()) < 20:
-        return create_fallback_json()
+        return None
 
     url = "https://api.deepseek.com/chat/completions"
     headers = {
@@ -42,15 +37,14 @@ def update_playlist_json(reddit_context):
     }
 
     prompt = f"""
-    Вы — парсер данных для базы аукциона Forza Horizon.
-    Проанализируйте тексты постов и извлеките награды текущего сезона.
+    Вы — строгий парсер данных для базы аукциона Forza Horizon. Ваша главная задача — извлекать награды ТОЛЬКО для Forza Horizon 6 (FH6).
     
     ПРАВИЛО 1: Верните СТРОГО валидный JSON без форматирования Markdown (без ```json).
-    ПРАВИЛО 2: Если текст не содержит четких наград, запишите "Ожидание данных FH6" и цену "0".
-    ПРАВИЛО 3: Извлекай данные ТОЛЬКО если текст описывает СВЕЖИЙ, стартовавший сезон (актуальную Series).
-    ПРАВИЛО 4: Убедись, что пост посвящен ИМЕННО Forza Horizon 6 (FH6). Если упоминается Forza Horizon 5 (FH5) — верни "Ожидание данных FH6".
+    ПРАВИЛО 2 (АНТИ-FH5): Внимательно проверяйте текст постов. Если в заголовке или тексте упоминается Forza Horizon 5, FH5, Horizon 5 или любые старые части — КАТЕГОРИЧЕСКИ игнорируйте этот пост. Данные должны относиться исключительно к Forza Horizon 6 (FH6).
+    ПРАВИЛО 3: Извлекайте данные только если найден актуальный сезонный гайд (Series, Festival Playlist, Rewards).
+    ПРАВИЛО 4: Если в ленте нет подходящих свежих постов именно по FH6, вы должны вернуть СТРОГО строку "SKIP" в поле current_season, чтобы мы не перезаписывали текущие данные.
     
-    Шаблон JSON:
+    Шаблон JSON (если данные найдены):
     {{
       "current_season": "СЕЗОН (например, SUMMER)",
       "series_number": "Название серии",
@@ -85,25 +79,27 @@ def update_playlist_json(reddit_context):
                 result = result[7:-3].strip()
             elif result.startswith("```"):
                 result = result[3:-3].strip()
-            return json.loads(result)
-        return create_fallback_json()
+            
+            parsed_json = json.loads(result)
+            
+            # Если ИИ вернул метку пропуска или обнаружил старую версию
+            if parsed_json.get("current_season") == "SKIP" or "FH5" in str(parsed_json):
+                print("Актуальных данных по FH6 не обнаружено (либо это FH5). Файл не трогаем.")
+                return None
+                
+            return parsed_json
+        return None
     except Exception as e:
         print(f"Ошибка API DeepSeek: {e}")
-        return create_fallback_json()
-
-def create_fallback_json():
-    return {
-      "current_season": "Ожидание данных FH6",
-      "series_number": "Ожидание данных FH6",
-      "series_rewards": "Ожидание данных FH6",
-      "cars_20pts": [{"name": "Ожидание данных FH6", "est_value": "0"}],
-      "cars_40pts": [{"name": "Ожидание данных FH6", "est_value": "0"}],
-      "trading_advice": "Ожидание данных FH6"
-    }
+        return None
 
 if __name__ == "__main__":
-    reddit_data = fetch_reddit_rss()
+    reddit_data = fetch_reddit_posts()
     final_data = update_playlist_json(reddit_data)
-    with open("playlist.json", "w", encoding="utf-8") as f:
-        json.dump(final_data, f, ensure_ascii=False, indent=2)
-    print("Файл playlist.json успешно обновлен.")
+    
+    if final_data:
+        with open("playlist.json", "w", encoding="utf-8") as f:
+            json.dump(final_data, f, ensure_ascii=False, indent=2)
+        print("Файл playlist.json успешно обновлен.")
+    else:
+        print("Пропуск обновления: защищаемся от перезаписи старыми данными или FH5.")
