@@ -3,27 +3,39 @@ import json
 import requests
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+SERPER_API_KEY = os.environ.get("SERPER_API_KEY")
 
-def fetch_official_playlist():
-    # Официальный адрес плейлистов Forza
-    url = "https://forza.net/fh6playlists"
+def fetch_reddit_via_serper():
+    # Используем быстрый поисковый API для точного нахождения постов с Reddit
+    url = "https://google.serper.dev/search"
+    payload = json.dumps({
+        "q": "site:reddit.com/r/ForzaHorizon \"FH6\" \"Series\" (Rewards OR Playlist OR Breakdown)",
+        "num": 3
+    })
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        'X-API-KEY': SERPER_API_KEY,
+        'Content-Type': 'application/json'
     }
     
     try:
-        response = requests.get(url, headers=headers, timeout=15)
+        response = requests.post(url, headers=headers, data=payload, timeout=15)
         if response.status_code == 200:
-            return response.text
-        print(f"Ошибка HTTP: {response.status_code}")
+            data = response.json()
+            results_text = ""
+            for item in data.get('organic', []):
+                title = item.get('title', '')
+                snippet = item.get('snippet', '')
+                results_text += f"ЗАГОЛОВОК: {title}\nТЕКСТ: {snippet}\n\n"
+            return results_text
+        print(f"Ошибка Serper API: {response.status_code}")
         return None
     except Exception as e:
-        print(f"Ошибка загрузки страницы Forza.net: {e}")
+        print(f"Ошибка запроса к Serper: {e}")
         return None
 
-def update_playlist_json(html_context):
-    if not html_context or len(html_context.strip()) < 100:
-        print("Получена слишком короткая страница или пустой ответ.")
+def update_playlist_json(search_context):
+    if not search_context or len(search_context.strip()) < 20:
+        print("Поиск через прокси не дал результатов.")
         return None
 
     url = "https://api.deepseek.com/chat/completions"
@@ -33,28 +45,29 @@ def update_playlist_json(html_context):
     }
 
     prompt = f"""
-    Вы — парсер официального сайта Forza Horizon. Проанализируйте HTML-код страницы официального плейлиста и извлеките награды текущего летнего сезона (Summer) для Series 6.
+    Вы — строгий парсер данных для базы аукциона Forza Horizon.
+    Проанализируйте результаты поиска Google (посты с Reddit) и извлеките награды актуального сезона Series 6 для Forza Horizon 6.
     
     ПРАВИЛО 1: Верните СТРОГО валидный JSON без форматирования Markdown (без ```json).
-    ПРАВИЛО 2: Найдите точные названия машин за 20 PTS и 40 PTS текущего сезона.
-    ПРАВИЛО 3: Если данные на странице скрыты за скриптами или отсутствуют, верните пустой JSON.
+    ПРАВИЛО 2: Данные должны относиться исключительно к Forza Horizon 6 (FH6) и Series 6. Категорически игнорируйте Forza Horizon 5 (FH5).
+    ПРАВИЛО 3: Если в тексте нет информации о машинах текущего сезона, верните null.
     
     Шаблон JSON:
     {{
       "current_season": "SUMMER",
       "series_number": "Series 6",
-      "series_rewards": "Награды серии",
+      "series_rewards": "Описание наград серии",
       "cars_20pts": [
         {{"name": "Точное название машины за 20 PTS", "est_value": "цены нет"}}
       ],
       "cars_40pts": [
         {{"name": "Точное название машины за 40 PTS", "est_value": "цены нет"}}
       ],
-      "trading_advice": "Официальный сезонный плейлист FH6"
+      "trading_advice": "Совет по снайпингу"
     }}
 
-    HTML-код страницы:
-    {html_context[:15000]}
+    Результаты поиска:
+    {search_context}
     """
 
     payload = {
@@ -86,13 +99,13 @@ def update_playlist_json(html_context):
         return None
 
 if __name__ == "__main__":
-    print("Загрузка данных с официального сайта Forza.net...")
-    html_data = fetch_official_playlist()
-    final_data = update_playlist_json(html_data)
+    print("Поиск через надежный прокси Serper...")
+    search_data = fetch_reddit_via_serper()
+    final_data = update_playlist_json(search_data)
     
     if final_data:
         with open("playlist.json", "w", encoding="utf-8") as f:
             json.dump(final_data, f, ensure_ascii=False, indent=2)
-        print("Файл playlist.json успешно обновлен с официального сайта!")
+        print("Файл playlist.json успешно обновлен через поисковый прокси!")
     else:
-        print("Не удалось извлечь данные (сайт использует динамическую подгрузку JS).")
+        print("Обновление пропущено: в поисковой выдаче еще нет точного гайда.")
