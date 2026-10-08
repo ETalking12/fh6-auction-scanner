@@ -5,8 +5,8 @@ import requests
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 
 def fetch_reddit_posts():
-    # Забираем свежие посты из ленты сабреддита
-    url = "https://www.reddit.com/r/ForzaHorizon/new.json?limit=15"
+    # Ищем конкретно по заголовкам с наградами и плейлистом через публичный JSON поиска Reddit
+    url = "https://www.reddit.com/r/ForzaHorizon/search.json?q=title%3A(Series%20AND%20(Rewards%20OR%20Playlist%20OR%20Breakdown))&restrict_sr=1&sort=new&limit=5"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
@@ -28,6 +28,7 @@ def fetch_reddit_posts():
 
 def update_playlist_json(reddit_context):
     if not reddit_context or len(reddit_context.strip()) < 20:
+        print("Reddit не вернул постов.")
         return None
 
     url = "https://api.deepseek.com/chat/completions"
@@ -37,25 +38,25 @@ def update_playlist_json(reddit_context):
     }
 
     prompt = f"""
-    Вы — строгий парсер данных для базы аукциона Forza Horizon. Ваша главная задача — извлекать награды ТОЛЬКО для Forza Horizon 6 (FH6).
+    Вы — парсер данных для базы аукциона Forza Horizon.
+    Проанализируйте тексты постов с Reddit и извлеките награды текущего сезона Series 6.
     
     ПРАВИЛО 1: Верните СТРОГО валидный JSON без форматирования Markdown (без ```json).
-    ПРАВИЛО 2 (АНТИ-FH5): Внимательно проверяйте текст постов. Если в заголовке или тексте упоминается Forza Horizon 5, FH5, Horizon 5 или любые старые части — КАТЕГОРИЧЕСКИ игнорируйте этот пост. Данные должны относиться исключительно к Forza Horizon 6 (FH6).
-    ПРАВИЛО 3: Извлекайте данные только если найден актуальный сезонный гайд (Series, Festival Playlist, Rewards).
-    ПРАВИЛО 4: Если в ленте нет подходящих свежих постов именно по FH6, вы должны вернуть СТРОГО строку "SKIP" в поле current_season, чтобы мы не перезаписывали текущие данные.
+    ПРАВИЛО 2: Убедитесь, что данные относятся к актуальной серии (Series 6) и Forza Horizon 6. Игнорируйте любые упоминания Forza Horizon 5.
+    ПРАВИЛО 3: Если в тексте нет информации о машинах сезона, верните пустой JSON.
     
-    Шаблон JSON (если данные найдены):
+    Шаблон JSON:
     {{
-      "current_season": "СЕЗОН (например, SUMMER)",
-      "series_number": "Название серии",
-      "series_rewards": "80 PTS: Машина 1, 160 PTS: Машина 2",
+      "current_season": "SUMMER",
+      "series_number": "Series 6",
+      "series_rewards": "Описание наград серии",
       "cars_20pts": [
-        {{"name": "Машина за 20 PTS", "est_value": "цены нет"}}
+        {{"name": "Точное название машины за 20 PTS", "est_value": "цены нет"}}
       ],
       "cars_40pts": [
-        {{"name": "Машина за 40 PTS", "est_value": "цены нет"}}
+        {{"name": "Точное название машины за 40 PTS", "est_value": "цены нет"}}
       ],
-      "trading_advice": "Краткий совет по снайпингу для этих наград"
+      "trading_advice": "Совет по снайпингу"
     }}
 
     Текст с Reddit:
@@ -81,12 +82,6 @@ def update_playlist_json(reddit_context):
                 result = result[3:-3].strip()
             
             parsed_json = json.loads(result)
-            
-            # Если ИИ вернул метку пропуска или обнаружил старую версию
-            if parsed_json.get("current_season") == "SKIP" or "FH5" in str(parsed_json):
-                print("Актуальных данных по FH6 не обнаружено (либо это FH5). Файл не трогаем.")
-                return None
-                
             return parsed_json
         return None
     except Exception as e:
@@ -97,9 +92,9 @@ if __name__ == "__main__":
     reddit_data = fetch_reddit_posts()
     final_data = update_playlist_json(reddit_data)
     
-    if final_data:
+    if final_data and "cars_20pts" in final_data:
         with open("playlist.json", "w", encoding="utf-8") as f:
             json.dump(final_data, f, ensure_ascii=False, indent=2)
-        print("Файл playlist.json успешно обновлен.")
+        print("Файл playlist.json успешно обновлен автоматически.")
     else:
-        print("Пропуск обновления: защищаемся от перезаписи старыми данными или FH5.")
+        print("Автоматическое обновление пропущено: нет валидных данных в выдаче.")
