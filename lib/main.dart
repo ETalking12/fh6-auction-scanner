@@ -68,10 +68,14 @@ class _Forza6SniperAppState extends State<Forza6SniperApp> {
   int _currentIndex = 0;
   List<WatchlistItem> _portfolio = [];
 
+  // Глобальные справочники для умного матчинга имен
+  List<String> _globalCarDatabase = [];
+
   @override
   void initState() {
     super.initState();
     _loadPortfolio();
+    _preloadGlobalDatabase();
   }
 
   Future<void> _loadPortfolio() async {
@@ -97,6 +101,30 @@ class _Forza6SniperAppState extends State<Forza6SniperApp> {
     await prefs.setString("user_portfolio_list", raw);
   }
 
+  Future<void> _preloadGlobalDatabase() async {
+    try {
+      final res = await http.get(Uri.parse("https://docs.google.com/spreadsheets/d/1GvM6Q5PD9UH5QxWI2VSMxWiTFkR4RShc/export?format=csv")).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final bodyString = utf8.decode(res.bodyBytes);
+        List<String> lines = const LineSplitter().convert(bodyString);
+        List<String> cars = [];
+        String lastBrand = "";
+        for (int i = 1; i < lines.length; i++) {
+          List<String> rawParts = lines[i].split(RegExp(r',(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)'));
+          List<String> parts = rawParts.map((e) => e.replaceAll('"', '').trim()).where((e) => e.isNotEmpty).toList();
+          if (parts.isEmpty) continue;
+          if (parts.length > 1) {
+            lastBrand = parts[0];
+            cars.add(parts.sublist(0, 2).join(" "));
+          } else if (lastBrand.isNotEmpty) {
+            cars.add("$lastBrand ${parts[0]}");
+          }
+        }
+        if (mounted) setState(() => _globalCarDatabase = cars);
+      }
+    } catch (_) {}
+  }
+
   void _addQuickSnipeToPortfolio(String carName, int buyPrice, int currentMarket, int projectedValue) {
     final newItem = WatchlistItem(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -114,7 +142,7 @@ class _Forza6SniperAppState extends State<Forza6SniperApp> {
   @override
   Widget build(BuildContext context) {
     final screens = [
-      ScannerTab(onAddToPortfolio: _addQuickSnipeToPortfolio),
+      ScannerTab(onAddToPortfolio: _addQuickSnipeToPortfolio, referenceCars: _globalCarDatabase),
       const StrategyAdvisorTab(),
       PriceDatabaseTab(onAddToPortfolio: _addQuickSnipeToPortfolio),
       WatchlistTab(portfolio: _portfolio, onUpdate: _savePortfolio),
@@ -283,7 +311,7 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
                       _buildSpecRow("Ликвидность:", "🔥 Дефицит (Топ)"),
                       const SizedBox(height: 12),
                       const Text(
-                        "💡 Совет по снайпингу: Модель пользуется повышенным спросом в текущей серии. Скупайте лоты по закрытым ставкам и выставляйте по максимальной цене.",
+                        "💡 Совет по снайпингу: Модель пользуется повышенным спросом в текущей серии. Скупайте сезонные лоты по закрытым ставкам.",
                         style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
                       ),
                       const SizedBox(height: 16),
@@ -493,7 +521,8 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
 // ==========================================
 class ScannerTab extends StatefulWidget {
   final Function(String name, int price, int marketPrice, int projectedPrice) onAddToPortfolio;
-  const ScannerTab({super.key, required this.onAddToPortfolio});
+  final List<String> referenceCars;
+  const ScannerTab({super.key, required this.onAddToPortfolio, required this.referenceCars});
   @override
   State<ScannerTab> createState() => _ScannerTabState();
 }
@@ -514,7 +543,6 @@ class _ScannerTabState extends State<ScannerTab> {
   String _lastRawText = "Готов к сканированию...";
   String _statusBanner = "Ожидание завершенных торгов...";
 
-  // Аналитика по реальным завершенным сделкам («Продано!»)
   final List<int> _sessionScannedPrices = [];
   int _sessionAveragePrice = 0;
 
@@ -577,6 +605,27 @@ class _ScannerTabState extends State<ScannerTab> {
     await _controller!.setFlashMode(_isTorchOn ? FlashMode.torch : FlashMode.off);
   }
 
+  // Умный подбор имени машины из Базы Цен по ключевым словам
+  String _matchCarName(String rawText) {
+    if (widget.referenceCars.isEmpty || rawText.isEmpty) return rawText;
+    String upperRaw = rawText.toUpperCase();
+    for (String car in widget.referenceCars) {
+      String upperCar = car.toUpperCase();
+      // Проверяем вхождение ключевых слов модели
+      List<String> words = upperRaw.split(RegExp(r'\s+'));
+      int matchCount = 0;
+      for (var w in words) {
+        if (w.length > 3 && upperCar.contains(w)) {
+          matchCount++;
+        }
+      }
+      if (matchCount >= 1 && words.isNotEmpty) {
+        return car; // Возвращаем чистое официальное название из базы
+      }
+    }
+    return rawText;
+  }
+
   void _startScanLoop() async {
     while (_isScanning && mounted) {
       if (_controller != null && _controller!.value.isInitialized && !_isProcessing) {
@@ -618,7 +667,6 @@ class _ScannerTabState extends State<ScannerTab> {
               }
             }
 
-            // Фокус на закрытых сделках со статусом «Продано!»
             bool isSoldCard = textUpper.contains("ПРОДАНО") || textUpper.contains("SOLD");
 
             if (textUpper.contains("CR") || RegExp(r'\d{1,3}(?:\s?\d{3})+').hasMatch(text)) {
@@ -634,7 +682,7 @@ class _ScannerTabState extends State<ScannerTab> {
               }
 
               if (isSoldCard && lineNumbers.isNotEmpty) {
-                int winningBid = lineNumbers.first; // Финальная ставка в левой части
+                int winningBid = lineNumbers.first;
                 if (!soldPrices.contains(winningBid)) {
                   soldPrices.add(winningBid);
                   debugText += "Продано: $winningBid CR ";
@@ -647,16 +695,11 @@ class _ScannerTabState extends State<ScannerTab> {
             _lastRawText = "Закрытые сделки: " + (debugText.isEmpty ? "ожидание статуса ПРОДАНО..." : debugText);
           });
 
-          final wordRegex = RegExp(r'\b[A-Za-zА-Яа-я0-9]{2,15}\b');
-          final wordMatches = wordRegex.allMatches(nameText);
-          List<String> validWords = [];
-          for (final m in wordMatches) {
-            String word = m.group(0)!;
-            if (RegExp(r'^\d+$').hasMatch(word)) continue;
-            validWords.add(word);
+          // Чистим и сопоставляем имя с Базой Цен
+          String guessedName = nameText.replaceAll(RegExp(r'[^A-Za-zА-Яа-я0-9\s]'), '').trim();
+          if (guessedName.isNotEmpty) {
+            _detectedCarName = _matchCarName(guessedName);
           }
-          String guessedName = validWords.take(3).join(" ");
-          if (guessedName.isNotEmpty) _detectedCarName = guessedName;
 
           if (soldPrices.isNotEmpty) {
             int bestSoldPrice = soldPrices.reduce((a, b) => a < b ? a : b);
