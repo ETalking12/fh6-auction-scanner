@@ -7,10 +7,9 @@ SERPER_API_KEY = os.environ.get("SERPER_API_KEY")
 
 def fetch_reddit_via_serper():
     if not SERPER_API_KEY:
-        print("SERPER_API_KEY не задан в секретах!")
+        print("Ошибка: SERPER_API_KEY не найден в секретах GitHub!")
         return None
         
-    # Расширяем и упрощаем поисковый запрос под реальную выдачу Google
     url = "https://google.serper.dev/search"
     payload = json.dumps({
         "q": "FH6 Series 6 Summer Festival Playlist Guide",
@@ -30,6 +29,7 @@ def fetch_reddit_via_serper():
                 title = item.get('title', '')
                 snippet = item.get('snippet', '')
                 results_text += f"ЗАГОЛОВОК: {title}\nТЕКСТ: {snippet}\n\n"
+            print(f"Найдено результатов поиска: {len(results_text)}")
             return results_text
         print(f"Ошибка Serper API: {response.status_code}")
         return None
@@ -39,7 +39,7 @@ def fetch_reddit_via_serper():
 
 def update_playlist_json(search_context):
     if not search_context or len(search_context.strip()) < 10:
-        print("Поиск не дал результатов.")
+        print("Контекст поиска пуст.")
         return False
 
     url = "https://api.deepseek.com/chat/completions"
@@ -52,9 +52,8 @@ def update_playlist_json(search_context):
     Вы — парсер данных для базы аукциона Forza Horizon.
     Проанализируйте результаты поиска Google и извлеките награды сезона Series 6 Summer для Forza Horizon 6.
     
-    ПРАВИЛО 1: Верните СТРОГО валидный JSON без форматирования Markdown (без ```json).
+    ПРАВИЛО 1: Верните СТРОГО валидный JSON без форматирования Markdown (без ```json и без ```).
     ПРАВИЛО 2: Категорически игнорируйте Forza Horizon 5 (FH5).
-    ПРАВИЛО 3: Извлеките данные текущего сезона Series 6 (Summer). Если в текстеsnippet нет точных машин, укажите их на основе стандартного состава серии или актуального гайда.
     
     Шаблон JSON:
     {{
@@ -87,23 +86,29 @@ def update_playlist_json(search_context):
         response = requests.post(url, headers=headers, json=payload, timeout=30)
         if response.status_code == 200:
             result = response.json()['choices'][0]['message']['content'].strip()
+            print(f"Ответ от DeepSeek: {result}")
+            
+            # Очистка от возможных маркdown-тегов
             if result.startswith("```json"):
                 result = result[7:-3].strip()
             elif result.startswith("```"):
                 result = result[3:-3].strip()
             
+            # Проверяем, что это валидный JSON, и сразу пишем в файл
             parsed_json = json.loads(result)
             
             with open("playlist.json", "w", encoding="utf-8") as f:
                 json.dump(parsed_json, f, ensure_ascii=False, indent=2)
-            print("Файл playlist.json успешно обновлен!")
+            print("Файл playlist.json принудительно перезаписан и сохранен!")
             return True
-        return False
+        else:
+            print(f"Ошибка DeepSeek API: {response.status_code} - {response.text}")
+            return False
     except Exception as e:
-        print(f"Ошибка при обработке данных DeepSeek: {e}")
+        print(f"Ошибка при обработке JSON: {e}")
         return False
 
 if __name__ == "__main__":
-    print("Запуск точного поиска через Serper...")
+    print("Запуск принудительного обновления...")
     search_data = fetch_reddit_via_serper()
     update_playlist_json(search_data)
