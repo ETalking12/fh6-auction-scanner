@@ -283,7 +283,7 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
                       _buildSpecRow("Ликвидность:", "🔥 Дефицит (Топ)"),
                       const SizedBox(height: 12),
                       const Text(
-                        "💡 Совет по снайпингу: Модель пользуется повышенным спросом в текущей серии. Скупайте лоты со скидкой и выставляйте по максимальной цене.",
+                        "💡 Совет по снайпингу: Модель пользуется повышенным спросом в текущей серии. Скупайте лоты по закрытым ставкам и выставляйте по максимальной цене.",
                         style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
                       ),
                       const SizedBox(height: 16),
@@ -512,9 +512,9 @@ class _ScannerTabState extends State<ScannerTab> {
   String _detectedCarName = "";
   bool _isSnipeAlert = false;
   String _lastRawText = "Готов к сканированию...";
-  String _statusBanner = "Вместите лоты в окно сканера";
+  String _statusBanner = "Ожидание завершенных торгов...";
 
-  // Локальная сессионная аналитика цен
+  // Аналитика по реальным завершенным сделкам («Продано!»)
   final List<int> _sessionScannedPrices = [];
   int _sessionAveragePrice = 0;
 
@@ -530,6 +530,16 @@ class _ScannerTabState extends State<ScannerTab> {
     setState(() {
       _targetMarketValue = prefs.getInt("snipe_market_value") ?? 20000000;
       _desiredDiscount = prefs.getDouble("snipe_discount") ?? 0.30;
+      
+      final List<String>? savedPrices = prefs.getStringList("session_sold_prices");
+      if (savedPrices != null) {
+        _sessionScannedPrices.clear();
+        _sessionScannedPrices.addAll(savedPrices.map((e) => int.tryParse(e) ?? 0));
+        if (_sessionScannedPrices.isNotEmpty) {
+          int sum = _sessionScannedPrices.reduce((a, b) => a + b);
+          _sessionAveragePrice = (sum / _sessionScannedPrices.length).round();
+        }
+      }
     });
   }
 
@@ -538,6 +548,12 @@ class _ScannerTabState extends State<ScannerTab> {
     await prefs.setInt("snipe_market_value", value);
     await prefs.setDouble("snipe_discount", discount);
     setState(() { _targetMarketValue = value; _desiredDiscount = discount; });
+  }
+
+  Future<void> _saveSessionPrices() async {
+    final prefs = await SharedPreferences.getInstance();
+    List<String> stringPrices = _sessionScannedPrices.map((e) => e.toString()).toList();
+    await prefs.setStringList("session_sold_prices", stringPrices);
   }
 
   Future<void> _initCamera() async {
@@ -572,9 +588,9 @@ class _ScannerTabState extends State<ScannerTab> {
           final recognizedText = await _textRecognizer.processImage(inputImage);
           if (!mounted) break;
 
-          List<int> cardBuyouts = [];
+          List<int> soldPrices = [];
           String nameText = "";
-          String debugBuyouts = "";
+          String debugText = "";
 
           List<Map<String, dynamic>> allLines = [];
           for (TextBlock block in recognizedText.blocks) {
@@ -602,6 +618,9 @@ class _ScannerTabState extends State<ScannerTab> {
               }
             }
 
+            // Фокус на закрытых сделках со статусом «Продано!»
+            bool isSoldCard = textUpper.contains("ПРОДАНО") || textUpper.contains("SOLD");
+
             if (textUpper.contains("CR") || RegExp(r'\d{1,3}(?:\s?\d{3})+').hasMatch(text)) {
               String cleaned = text.replaceAll(RegExp(r'[^0-9\s]'), '').trim();
               Iterable<RegExpMatch> matches = RegExp(r'\b\d{1,3}(?:\s?\d{3})+\b|\b\d{5,8}\b').allMatches(cleaned);
@@ -614,29 +633,18 @@ class _ScannerTabState extends State<ScannerTab> {
                 }
               }
 
-              if (lineNumbers.isNotEmpty) {
-                if (lineNumbers.length >= 2) {
-                  int buyoutCandidate = lineNumbers.last;
-                  if (!cardBuyouts.contains(buyoutCandidate)) {
-                    cardBuyouts.add(buyoutCandidate);
-                    debugBuyouts += buyoutCandidate.toString() + " ";
-                  }
-                } else if (lineNumbers.length == 1) {
-                  double lineLeft = line['left'] as double;
-                  if (lineLeft > 200) {
-                    int val = lineNumbers.first;
-                    if (!cardBuyouts.contains(val)) {
-                      cardBuyouts.add(val);
-                      debugBuyouts += val.toString() + " ";
-                    }
-                  }
+              if (isSoldCard && lineNumbers.isNotEmpty) {
+                int winningBid = lineNumbers.first; // Финальная ставка в левой части
+                if (!soldPrices.contains(winningBid)) {
+                  soldPrices.add(winningBid);
+                  debugText += "Продано: $winningBid CR ";
                 }
               }
             }
           }
 
           setState(() {
-            _lastRawText = "Выкупы по CR: " + (debugBuyouts.isEmpty ? "0" : debugBuyouts);
+            _lastRawText = "Закрытые сделки: " + (debugText.isEmpty ? "ожидание статуса ПРОДАНО..." : debugText);
           });
 
           final wordRegex = RegExp(r'\b[A-Za-zА-Яа-я0-9]{2,15}\b');
@@ -650,18 +658,24 @@ class _ScannerTabState extends State<ScannerTab> {
           String guessedName = validWords.take(3).join(" ");
           if (guessedName.isNotEmpty) _detectedCarName = guessedName;
 
-          if (cardBuyouts.isNotEmpty) {
-            int bestPriceOnScreen = cardBuyouts.reduce((a, b) => a < b ? a : b);
+          if (soldPrices.isNotEmpty) {
+            int bestSoldPrice = soldPrices.reduce((a, b) => a < b ? a : b);
             
-            if (!_sessionScannedPrices.contains(bestPriceOnScreen)) {
-              _sessionScannedPrices.add(bestPriceOnScreen);
+            if (!_sessionScannedPrices.contains(bestSoldPrice)) {
+              _sessionScannedPrices.add(bestSoldPrice);
               int sum = _sessionScannedPrices.reduce((a, b) => a + b);
               _sessionAveragePrice = (sum / _sessionScannedPrices.length).round();
+              _saveSessionPrices();
             }
 
-            _processPrice(bestPriceOnScreen);
+            setState(() {
+              _detectedPrice = bestSoldPrice;
+              _isSnipeAlert = true;
+              _statusBanner = "🎯 УСПЕШНАЯ СДЕЛКА: $bestSoldPrice CR (Средняя рынка: $_sessionAveragePrice CR)";
+            });
+            HapticFeedback.heavyImpact();
           } else {
-            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Вместите лоты в окно сканера"; });
+            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Ожидание завершенных торгов..."; });
           }
         } catch (e) {
           if (mounted) setState(() => _lastRawText = "Ошибка распознавания");
@@ -671,22 +685,6 @@ class _ScannerTabState extends State<ScannerTab> {
       }
       await Future.delayed(const Duration(milliseconds: 1000));
     }
-  }
-
-  void _processPrice(int price) {
-    if (price < 15000 || !mounted) return;
-    int alertThreshold = (_targetMarketValue * (1 - _desiredDiscount)).round();
-    setState(() {
-      _detectedPrice = price;
-      if (price <= alertThreshold) {
-        _isSnipeAlert = true;
-        _statusBanner = "🔥 СНАЙП! Выкуп: $price CR (Средняя: $_sessionAveragePrice CR)";
-        HapticFeedback.heavyImpact();
-      } else {
-        _isSnipeAlert = false;
-        _statusBanner = "Выкуп: $price CR | Средняя за сессию: $_sessionAveragePrice CR";
-      }
-    });
   }
 
   void _showCalibrationDialog() {
@@ -703,7 +701,7 @@ class _ScannerTabState extends State<ScannerTab> {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text("Средняя цена по сканированиям: $_sessionAveragePrice CR", style: const TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+                Text("Средняя цена закрытых сделок: $_sessionAveragePrice CR", style: const TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
                 const Text("Укажите целевую рыночную стоимость:", style: TextStyle(color: Colors.white70, fontSize: 12)),
                 const SizedBox(height: 10),
@@ -740,6 +738,13 @@ class _ScannerTabState extends State<ScannerTab> {
   void _showSaveDialog(int currentPrice, String guessedName) {
     int initialMarket = _sessionAveragePrice > 0 ? _sessionAveragePrice : _targetMarketValue;
 
+    int priceDifference = currentPrice - initialMarket;
+    double percentDifference = initialMarket > 0 ? (priceDifference / initialMarket) * 100 : 0.0;
+    
+    String diffText = priceDifference <= 0 
+        ? "Ниже рынка на ${priceDifference.abs()} CR (${percentDifference.abs().toStringAsFixed(1)}%) 🔥" 
+        : "Выше рынка на $priceDifference CR (+${percentDifference.toStringAsFixed(1)}%) ⚠️";
+
     final nameController = TextEditingController(text: guessedName);
     final priceController = TextEditingController(text: currentPrice.toString());
     final marketPriceController = TextEditingController(text: initialMarket.toString());
@@ -753,7 +758,25 @@ class _ScannerTabState extends State<ScannerTab> {
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: priceDifference <= 0 ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: priceDifference <= 0 ? Colors.greenAccent : Colors.redAccent, width: 1),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("Сравнение со средним рынком закрытых сделок:", style: TextStyle(color: Colors.white70, fontSize: 11)),
+                    const SizedBox(height: 4),
+                    Text(diffText, style: TextStyle(color: priceDifference <= 0 ? Colors.greenAccent : Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
               TextField(
                 controller: nameController, style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(labelText: "Наименование лота", labelStyle: TextStyle(color: Colors.white54)),
@@ -766,7 +789,7 @@ class _ScannerTabState extends State<ScannerTab> {
               const SizedBox(height: 10),
               TextField(
                 controller: marketPriceController, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: "Рыночная цена СЕЙЧАС (CR)", labelStyle: TextStyle(color: Colors.white54)),
+                decoration: const InputDecoration(labelText: "Средняя цена закрытых сделок (CR)", labelStyle: TextStyle(color: Colors.white54)),
               ),
               const SizedBox(height: 10),
               TextField(
@@ -843,9 +866,9 @@ class _ScannerTabState extends State<ScannerTab> {
                   borderRadius: BorderRadius.circular(8)),
               child: Row(
                 children: [
-                  Expanded(flex: 65, child: Container(color: Colors.blueAccent.withOpacity(0.05), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("ИГНОР (СТАВКИ • КЛАССЫ)", style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)))))),
+                  Expanded(flex: 65, child: Container(color: Colors.blueAccent.withOpacity(0.05), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("СТАВКИ И СТАТУС ПРОДАНО!", style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)))))),
                   Container(width: 2, color: _isSnipeAlert ? Colors.greenAccent : Colors.white24),
-                  Expanded(flex: 35, child: Container(color: Colors.greenAccent.withOpacity(0.15), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("ЗОНА ВЫКУПА (CR)", style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)))))),
+                  Expanded(flex: 35, child: Container(color: Colors.greenAccent.withOpacity(0.15), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("ВЫКУП", style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)))))),
                 ],
               ),
             ),
