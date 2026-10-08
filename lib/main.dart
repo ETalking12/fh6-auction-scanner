@@ -678,51 +678,63 @@ class _ScannerTabState extends State<ScannerTab> {
             String cardText = "";
             bool isSold = false;
             bool isNotSold = false;
-            List<int> rightSideBuyouts = [];
+            List<Map<String, dynamic>> crPriceItems = [];
 
             for (var line in card) {
               String text = line['text'] as String;
               String textUpper = text.toUpperCase();
-              double leftPos = line['left'] as double;
               cardText += "$text ";
 
               if (textUpper.contains("НЕ ПРОДАНО")) {
                 isNotSold = true;
-              } else if (textUpper.contains("ПРОДАНО") || textUpper.contains("SOLD")) {
+              } else if (textUpper.contains("ПРОДАНО") || textUpper.contains("SOLD") || textUpper.contains("ПОЛУЧЕНО")) {
                 isSold = true;
               }
 
-              // ЖЕСТКИЙ ЯКОРЬ: Строка обязательно должна содержать "CR"
+              // Сбор всех элементов с "CR" внутри текущей карточки
               if (textUpper.contains("CR")) {
                 String cleaned = text.replaceAll(RegExp(r'[^0-9]'), '');
                 int? val = int.tryParse(cleaned);
-
                 if (val != null && val >= 100000 && val <= 35000000) {
-                  // Проверка по координате: только правая половина карточки (мгновенный выкуп)
-                  if (leftPos > 350) {
-                    rightSideBuyouts.add(val);
-                  }
+                  crPriceItems.add({
+                    'value': val,
+                    'left': line['left'],
+                  });
                 }
               }
             }
 
-            if (isSold && !isNotSold) continue; // Пропускаем завершенные торги
+            // Фоновое пополнение статистики закрытых торгов (пропускаем из активного снайпа)
+            if (isSold && !isNotSold) {
+              if (crPriceItems.isNotEmpty) {
+                int winningBid = crPriceItems.first['value'];
+                if (!_sessionScannedPrices.contains(winningBid) && winningBid > 50000) {
+                  _sessionScannedPrices.add(winningBid);
+                  int sum = _sessionScannedPrices.reduce((a, b) => a + b);
+                  _sessionAveragePrice = (sum / _sessionScannedPrices.length).round();
+                  _saveSessionPrices();
+                }
+              }
+              continue;
+            }
 
-            if (rightSideBuyouts.isNotEmpty) {
-              int buyoutPrice = rightSideBuyouts.reduce((a, b) => a < b ? a : b);
+            // Определяем мгновенный выкуп по самому правому положению среди найденных "CR" внутри карточки
+            if (crPriceItems.isNotEmpty) {
+              crPriceItems.sort((a, b) => (a['left'] as double).compareTo(b['left'] as double));
+              int instantBuyout = crPriceItems.last['value'];
 
-              if (bestInstantBuyout == 0 || buyoutPrice < bestInstantBuyout) {
-                bestInstantBuyout = buyoutPrice;
+              if (bestInstantBuyout == 0 || instantBuyout < bestInstantBuyout) {
+                bestInstantBuyout = instantBuyout;
                 
                 String rawName = cardText.replaceAll(RegExp(r'[^A-Za-zА-Яа-я0-9\s]'), '').trim();
                 bestCarName = _matchCarName(rawName);
-                debugText = "Лот: $bestCarName | Выкуп: $bestInstantBuyout CR";
+                debugText = "Лот: $bestCarName | Мгн. выкуп: $bestInstantBuyout CR";
               }
             }
           }
 
           setState(() {
-            _lastRawText = debugText.isNotEmpty ? debugText : "Поиск по якорю CR...";
+            _lastRawText = debugText.isNotEmpty ? debugText : "Поиск правого CR в карточках...";
           });
 
           if (bestInstantBuyout > 0) {
