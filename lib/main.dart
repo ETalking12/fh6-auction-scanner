@@ -660,7 +660,7 @@ class _ScannerTabState extends State<ScannerTab> {
 
           for (var line in allLines) {
             double top = line['top'] as double;
-            if (lastTop == null || (top - lastTop) < 65) {
+            if (lastTop == null || (top - lastTop) < 55) {
               currentCard.add(line);
             } else {
               if (currentCard.isNotEmpty) cards.add(currentCard);
@@ -676,8 +676,6 @@ class _ScannerTabState extends State<ScannerTab> {
 
           for (var card in cards) {
             String cardText = "";
-            bool isSold = false;
-            bool isNotSold = false;
             List<Map<String, dynamic>> crPriceItems = [];
 
             for (var line in card) {
@@ -685,17 +683,11 @@ class _ScannerTabState extends State<ScannerTab> {
               String textUpper = text.toUpperCase();
               cardText += "$text ";
 
-              if (textUpper.contains("НЕ ПРОДАНО")) {
-                isNotSold = true;
-              } else if (textUpper.contains("ПРОДАНО") || textUpper.contains("SOLD") || textUpper.contains("ПОЛУЧЕНО")) {
-                isSold = true;
-              }
-
               // Сбор всех элементов с "CR" внутри текущей карточки
               if (textUpper.contains("CR")) {
                 String cleaned = text.replaceAll(RegExp(r'[^0-9]'), '');
                 int? val = int.tryParse(cleaned);
-                if (val != null && val >= 100000 && val <= 35000000) {
+                if (val != null && val >= 10000 && val <= 40000000) {
                   crPriceItems.add({
                     'value': val,
                     'left': line['left'],
@@ -704,37 +696,31 @@ class _ScannerTabState extends State<ScannerTab> {
               }
             }
 
-            // Фоновое пополнение статистики закрытых торгов (пропускаем из активного снайпа)
-            if (isSold && !isNotSold) {
-              if (crPriceItems.isNotEmpty) {
-                int winningBid = crPriceItems.first['value'];
-                if (!_sessionScannedPrices.contains(winningBid) && winningBid > 50000) {
-                  _sessionScannedPrices.add(winningBid);
-                  int sum = _sessionScannedPrices.reduce((a, b) => a + b);
-                  _sessionAveragePrice = (sum / _sessionScannedPrices.length).round();
-                  _saveSessionPrices();
-                }
-              }
-              continue;
-            }
-
             // Определяем мгновенный выкуп по самому правому положению среди найденных "CR" внутри карточки
             if (crPriceItems.isNotEmpty) {
               crPriceItems.sort((a, b) => (a['left'] as double).compareTo(b['left'] as double));
               int instantBuyout = crPriceItems.last['value'];
+
+              // Фоновое пополнение статистики закрытых сделок / рынка
+              if (!_sessionScannedPrices.contains(instantBuyout) && instantBuyout > 20000) {
+                _sessionScannedPrices.add(instantBuyout);
+                int sum = _sessionScannedPrices.reduce((a, b) => a + b);
+                _sessionAveragePrice = (sum / _sessionScannedPrices.length).round();
+                _saveSessionPrices();
+              }
 
               if (bestInstantBuyout == 0 || instantBuyout < bestInstantBuyout) {
                 bestInstantBuyout = instantBuyout;
                 
                 String rawName = cardText.replaceAll(RegExp(r'[^A-Za-zА-Яа-я0-9\s]'), '').trim();
                 bestCarName = _matchCarName(rawName);
-                debugText = "Лот: $bestCarName | Мгн. выкуп: $bestInstantBuyout CR";
+                debugText = "Лот: $bestCarName | Выкуп: $bestInstantBuyout CR";
               }
             }
           }
 
           setState(() {
-            _lastRawText = debugText.isNotEmpty ? debugText : "Поиск правого CR в карточках...";
+            _lastRawText = debugText.isNotEmpty ? debugText : "Сканирование лотов...";
           });
 
           if (bestInstantBuyout > 0) {
@@ -757,7 +743,7 @@ class _ScannerTabState extends State<ScannerTab> {
               }
             });
           } else {
-            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Ожидание активных лотов..."; });
+            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Ожидание лотов..."; });
           }
         } catch (e) {
           if (mounted) setState(() => _lastRawText = "Ошибка сканирования");
