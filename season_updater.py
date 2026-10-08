@@ -5,8 +5,8 @@ import requests
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 
 def fetch_reddit_rss():
-    # Используем публичный JSON-эндпоинт Reddit для новых постов
-    url = "https://www.reddit.com/r/ForzaHorizon/hot.json?limit=10"
+    # Используем публичный JSON-эндпоинт Reddit
+    url = "https://www.reddit.com/r/ForzaHorizon/hot.json?limit=15"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
@@ -19,9 +19,12 @@ def fetch_reddit_rss():
             for post in data.get('data', {}).get('children', []):
                 title = post['data'].get('title', '')
                 text = post['data'].get('selftext', '')
-                # Ищем посты, где упоминается нужный сезон и FH6
-                if "FH6" in title or "Series" in title:
+                
+                # Расширяем список ключевых слов на основе реальных постов с ващих скриншотов
+                lower_title = title.lower()
+                if "fh6" in lower_title or "series" in lower_title or "breakdown" in lower_title or "megathread" in lower_title:
                     posts_text += f"ЗАГОЛОВОК: {title}\nТЕКСТ: {text}\n\n"
+                    
             return posts_text
         return None
     except Exception as e:
