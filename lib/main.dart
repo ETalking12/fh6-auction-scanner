@@ -67,8 +67,6 @@ class Forza6SniperApp extends StatefulWidget {
 class _Forza6SniperAppState extends State<Forza6SniperApp> {
   int _currentIndex = 0;
   List<WatchlistItem> _portfolio = [];
-
-  // Глобальные справочники для умного матчинга имен
   List<String> _globalCarDatabase = [];
 
   @override
@@ -311,7 +309,7 @@ class _StrategyAdvisorTabState extends State<StrategyAdvisorTab> {
                       _buildSpecRow("Ликвидность:", "🔥 Дефицит (Топ)"),
                       const SizedBox(height: 12),
                       const Text(
-                        "💡 Совет по снайпингу: Модель пользуется повышенным спросом в текущей серии. Скупайте сезонные лоты по закрытым ставкам.",
+                        "💡 Совет по снайпингу: Модель пользуется повышенным спросом в текущей серии. Скупайте сезонные лоты по выгодным ценам ниже рынка.",
                         style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
                       ),
                       const SizedBox(height: 16),
@@ -541,7 +539,7 @@ class _ScannerTabState extends State<ScannerTab> {
   String _detectedCarName = "";
   bool _isSnipeAlert = false;
   String _lastRawText = "Готов к сканированию...";
-  String _statusBanner = "Ожидание завершенных торгов...";
+  String _statusBanner = "Вместите активные лоты в окно сканера";
 
   final List<int> _sessionScannedPrices = [];
   int _sessionAveragePrice = 0;
@@ -605,13 +603,11 @@ class _ScannerTabState extends State<ScannerTab> {
     await _controller!.setFlashMode(_isTorchOn ? FlashMode.torch : FlashMode.off);
   }
 
-  // Умный подбор имени машины из Базы Цен по ключевым словам
   String _matchCarName(String rawText) {
     if (widget.referenceCars.isEmpty || rawText.isEmpty) return rawText;
     String upperRaw = rawText.toUpperCase();
     for (String car in widget.referenceCars) {
       String upperCar = car.toUpperCase();
-      // Проверяем вхождение ключевых слов модели
       List<String> words = upperRaw.split(RegExp(r'\s+'));
       int matchCount = 0;
       for (var w in words) {
@@ -620,7 +616,7 @@ class _ScannerTabState extends State<ScannerTab> {
         }
       }
       if (matchCount >= 1 && words.isNotEmpty) {
-        return car; // Возвращаем чистое официальное название из базы
+        return car;
       }
     }
     return rawText;
@@ -637,7 +633,7 @@ class _ScannerTabState extends State<ScannerTab> {
           final recognizedText = await _textRecognizer.processImage(inputImage);
           if (!mounted) break;
 
-          List<int> soldPrices = [];
+          List<int> activePrices = [];
           String nameText = "";
           String debugText = "";
 
@@ -667,6 +663,7 @@ class _ScannerTabState extends State<ScannerTab> {
               }
             }
 
+            // Фоновое пополнение статистики по завершенным сделкам
             bool isSoldCard = textUpper.contains("ПРОДАНО") || textUpper.contains("SOLD");
 
             if (textUpper.contains("CR") || RegExp(r'\d{1,3}(?:\s?\d{3})+').hasMatch(text)) {
@@ -681,44 +678,61 @@ class _ScannerTabState extends State<ScannerTab> {
                 }
               }
 
-              if (isSoldCard && lineNumbers.isNotEmpty) {
-                int winningBid = lineNumbers.first;
-                if (!soldPrices.contains(winningBid)) {
-                  soldPrices.add(winningBid);
-                  debugText += "Продано: $winningBid CR ";
+              if (lineNumbers.isNotEmpty) {
+                if (isSoldCard) {
+                  int soldPrice = lineNumbers.first;
+                  if (!_sessionScannedPrices.contains(soldPrice)) {
+                    _sessionScannedPrices.add(soldPrice);
+                    int sum = _sessionScannedPrices.reduce((a, b) => a + b);
+                    _sessionAveragePrice = (sum / _sessionScannedPrices.length).round();
+                    _saveSessionPrices();
+                  }
+                }
+
+                // Сбор цен для активного сканирования и снайпинга
+                if (lineNumbers.length >= 2) {
+                  int buyout = lineNumbers.last;
+                  activePrices.add(buyout);
+                  debugText += "Выкуп: $buyout ";
+                } else if (lineNumbers.length == 1 && leftPos > 200) {
+                  int val = lineNumbers.first;
+                  activePrices.add(val);
+                  debugText += "Цена: $val ";
                 }
               }
             }
           }
 
           setState(() {
-            _lastRawText = "Закрытые сделки: " + (debugText.isEmpty ? "ожидание статуса ПРОДАНО..." : debugText);
+            _lastRawText = "Цены на экране: " + (debugText.isEmpty ? "нет" : debugText);
           });
 
-          // Чистим и сопоставляем имя с Базой Цен
           String guessedName = nameText.replaceAll(RegExp(r'[^A-Za-zА-Яа-я0-9\s]'), '').trim();
           if (guessedName.isNotEmpty) {
             _detectedCarName = _matchCarName(guessedName);
           }
 
-          if (soldPrices.isNotEmpty) {
-            int bestSoldPrice = soldPrices.reduce((a, b) => a < b ? a : b);
+          if (activePrices.isNotEmpty) {
+            int bestPriceOnScreen = activePrices.reduce((a, b) => a < b ? a : b);
             
-            if (!_sessionScannedPrices.contains(bestSoldPrice)) {
-              _sessionScannedPrices.add(bestSoldPrice);
-              int sum = _sessionScannedPrices.reduce((a, b) => a + b);
-              _sessionAveragePrice = (sum / _sessionScannedPrices.length).round();
-              _saveSessionPrices();
-            }
+            int baselineMarket = _sessionAveragePrice > 0 ? _sessionAveragePrice : _targetMarketValue;
+            int alertThreshold = (baselineMarket * (1 - _desiredDiscount)).round();
 
             setState(() {
-              _detectedPrice = bestSoldPrice;
-              _isSnipeAlert = true;
-              _statusBanner = "🎯 УСПЕШНАЯ СДЕЛКА: $bestSoldPrice CR (Средняя рынка: $_sessionAveragePrice CR)";
+              _detectedPrice = bestPriceOnScreen;
+              if (bestPriceOnScreen <= alertThreshold) {
+                _isSnipeAlert = true;
+                int diff = baselineMarket - bestPriceOnScreen;
+                double percent = (diff / baselineMarket) * 100;
+                _statusBanner = "🔥 СНАЙП! Цена: $bestPriceOnScreen CR (Ниже рынка на ${percent.toStringAsFixed(1)}%)";
+                HapticFeedback.heavyImpact();
+              } else {
+                _isSnipeAlert = false;
+                _statusBanner = "Лот: $bestPriceOnScreen CR | Средний рынок: $baselineMarket CR";
+              }
             });
-            HapticFeedback.heavyImpact();
           } else {
-            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Ожидание завершенных торгов..."; });
+            if (mounted) setState(() { _detectedPrice = 0; _isSnipeAlert = false; _statusBanner = "Вместите лоты в окно сканера"; });
           }
         } catch (e) {
           if (mounted) setState(() => _lastRawText = "Ошибка распознавания");
@@ -909,7 +923,7 @@ class _ScannerTabState extends State<ScannerTab> {
                   borderRadius: BorderRadius.circular(8)),
               child: Row(
                 children: [
-                  Expanded(flex: 65, child: Container(color: Colors.blueAccent.withOpacity(0.05), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("СТАВКИ И СТАТУС ПРОДАНО!", style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)))))),
+                  Expanded(flex: 65, child: Container(color: Colors.blueAccent.withOpacity(0.05), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("СТАВКИ / АКТИВНЫЕ ЛОТЫ", style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)))))),
                   Container(width: 2, color: _isSnipeAlert ? Colors.greenAccent : Colors.white24),
                   Expanded(flex: 35, child: Container(color: Colors.greenAccent.withOpacity(0.15), child: Align(alignment: Alignment.bottomCenter, child: Padding(padding: const EdgeInsets.all(8), child: Text("ВЫКУП", style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)))))),
                 ],
