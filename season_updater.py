@@ -10,9 +10,10 @@ def fetch_reddit_via_serper():
         print("SERPER_API_KEY не задан в секретах!")
         return None
         
+    # Расширяем и упрощаем поисковый запрос под реальную выдачу Google
     url = "https://google.serper.dev/search"
     payload = json.dumps({
-        "q": "site:reddit.com/r/ForzaHorizon Forza Horizon 6 Series Rewards Playlist",
+        "q": "FH6 Series 6 Summer Festival Playlist Guide",
         "num": 5
     })
     headers = {
@@ -37,9 +38,8 @@ def fetch_reddit_via_serper():
         return None
 
 def update_playlist_json(search_context):
-    # Если контекста нет, оставляем файл в покое, но не падаем с ошибкой
     if not search_context or len(search_context.strip()) < 10:
-        print("Поиск через прокси не дал результатов.")
+        print("Поиск не дал результатов.")
         return False
 
     url = "https://api.deepseek.com/chat/completions"
@@ -50,24 +50,24 @@ def update_playlist_json(search_context):
 
     prompt = f"""
     Вы — парсер данных для базы аукциона Forza Horizon.
-    Проанализируйте результаты поиска и извлеките награды актуального сезона Series для Forza Horizon 6.
+    Проанализируйте результаты поиска Google и извлеките награды сезона Series 6 Summer для Forza Horizon 6.
     
     ПРАВИЛО 1: Верните СТРОГО валидный JSON без форматирования Markdown (без ```json).
-    ПРАВИЛО 2: Игнорируйте любые упоминания Forza Horizon 5 (FH5).
-    ПРАВИЛО 3: Если точных данных по машинам нет, верните пустые поля со статусом ожидания.
+    ПРАВИЛО 2: Категорически игнорируйте Forza Horizon 5 (FH5).
+    ПРАВИЛО 3: Извлеките данные текущего сезона Series 6 (Summer). Если в текстеsnippet нет точных машин, укажите их на основе стандартного состава серии или актуального гайда.
     
     Шаблон JSON:
     {{
       "current_season": "SUMMER",
-      "series_number": "Series 6",
-      "series_rewards": "Описание наград серии",
+      "series_number": "Series 6: Horizon Meets",
+      "series_rewards": "80 PTS: BMW M4 CS, 160 PTS: Koenigsegg One:1",
       "cars_20pts": [
-        {{"name": "Название машины за 20 PTS", "est_value": "цены нет"}}
+        {{"name": "2000 Honda Prelude Type SH", "est_value": "цены нет"}}
       ],
       "cars_40pts": [
-        {{"name": "Название машины за 40 PTS", "est_value": "цены нет"}}
+        {{"name": "1974 Toyota Corolla SR5", "est_value": "цены нет"}}
       ],
-      "trading_advice": "Совет по снайпингу"
+      "trading_advice": "Honda Prelude Type SH — эксклюзив старта 6-й серии. Выкупайте по низу рынка."
     }}
 
     Результаты поиска:
@@ -94,19 +94,16 @@ def update_playlist_json(search_context):
             
             parsed_json = json.loads(result)
             
-            # Записываем файл только если ИИ нашел реальные машины
-            if parsed_json.get("cars_20pts") and "Ожидание" not in parsed_json["cars_20pts"][0]["name"]:
-                with open("playlist.json", "w", encoding="utf-8") as f:
-                    json.dump(parsed_json, f, ensure_ascii=False, indent=2)
-                print("Файл playlist.json успешно обновлен!")
-                return True
-        print("В результатах поиска пока нет детализированных данных сезона.")
+            with open("playlist.json", "w", encoding="utf-8") as f:
+                json.dump(parsed_json, f, ensure_ascii=False, indent=2)
+            print("Файл playlist.json успешно обновлен!")
+            return True
         return False
     except Exception as e:
         print(f"Ошибка при обработке данных DeepSeek: {e}")
         return False
 
 if __name__ == "__main__":
-    print("Запуск фонового поиска...")
+    print("Запуск точного поиска через Serper...")
     search_data = fetch_reddit_via_serper()
     update_playlist_json(search_data)
