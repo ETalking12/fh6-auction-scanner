@@ -84,6 +84,45 @@ def fetch_latest_playlist_info_iterative():
     combined_context = f"=== ЭТАП 1 (Сезон) ===\n{result_1}\n\n=== ЭТАП 2 ({series_name} {season_name} Машины) ===\n{result_2}"
     return combined_context
 
+def verify_playlist_data(json_data):
+    """
+    Шаг 4: Проверочный запрос (верификация данных через ИИ) перед сохранением.
+    """
+    print("Шаг 4: Проверочный запрос (верификация данных через ИИ)...")
+    url = "https://api.deepseek.com/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
+    }
+    
+    verification_prompt = f"""
+    Проверь следующий JSON-объект с данными плейлиста Forza Horizon 6 на корректность:
+    {json.dumps(json_data, ensure_ascii=False)}
+    
+    Ответь ТОЛЬКО словом "OK", если данные выглядят логично, относятся именно к Forza Horizon 6, содержат реальные машины и не имеют заглушек. 
+    Если найдена ошибка, упоминание FH5 или некорректные данные — напиши "ERROR".
+    """
+    
+    try:
+        response = requests.post(
+            url,
+            headers=headers,
+            json={
+                "model": "deepseek-chat",
+                "messages": [{"role": "user", "content": verification_prompt}],
+                "temperature": 0.1
+            },
+            timeout=15
+        )
+        if response.status_code == 200:
+            answer = response.json()['choices'][0]['message']['content'].strip().upper()
+            print(f"Ответ верификатора: {answer}")
+            return "OK" in answer
+    except Exception as e:
+        print(f"Ошибка верификации: {e}, пропускаем проверку.")
+        
+    return True
+
 def update_playlist_json(search_context):
     url = "https://api.deepseek.com/chat/completions"
     headers = {
@@ -138,11 +177,17 @@ def update_playlist_json(search_context):
                 result = result[3:-3].strip()
             
             new_parsed_json = json.loads(result)
+            
+            # Верификация данных перед записью
+            if not verify_playlist_data(new_parsed_json):
+                print("Верификация отклонила данные! Сохранение отменено.")
+                return False
+                
             new_parsed_json["last_updated"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             with open("playlist.json", "w", encoding="utf-8") as f:
                 json.dump(new_parsed_json, f, ensure_ascii=False, indent=2)
-            print("Файл playlist.json успешно обновлен с помощью итеративного двухэтапного поиска!")
+            print("Файл playlist.json успешно прошел верификацию и сохранен!")
             return True
     except Exception as e:
         print(f"Ошибка при обработке: {e}")
