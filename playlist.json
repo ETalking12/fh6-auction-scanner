@@ -1,19 +1,9 @@
 {
   "current_season": "AUTUMN",
   "series_number": "Series 6: Horizon Meets",
-  "series_rewards": "80 PTS: BMW M4 CS, 160 PTS: Koenigsegg One:1",
-  "cars_20pts": [
-    {
-      "name": "2024 BMW M4 CS",
-      "est_value": "цены нет"
-    }
-  ],
-  "cars_40pts": [
-    {
-      "name": "1998 TVR",
-      "est_value": "цены нет"
-    }
-  ],
-  "trading_advice": "Совет по трейдингу для машин 6-й серии Autumn: 1998 TVR и 2024 BMW M4 CS — редкие награды сезонного плейлиста, поэтому выставляйте их на аукцион с завышенной стартовой ценой в первые дни сезона, пока предложение ограничено; не продавайте сразу после получения, так как спрос обычно растёт к концу недели.",
-  "last_updated": "2026-10-15 21:28:21"
+  "series_rewards": "80 PTS: не указано; 160 PTS: не указано",
+  "cars_20pts": [],
+  "cars_40pts": [],
+  "trading_advice": "Нет данных по трейдингу для осеннего сезона Series 6.",
+  "last_updated": "2026-10-15 21:40:00"
 }
