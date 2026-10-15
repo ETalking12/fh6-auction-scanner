@@ -195,6 +195,7 @@ def update_playlist_json(search_context):
                 print("Верификация отклонила данные! Сохранение отменено.")
                 return False
                 
+            # Добавляем уникальный штамп времени, чтобы Git гарантированно увидел изменения и сделал коммит
             new_parsed_json["last_updated"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             with open("playlist.json", "w", encoding="utf-8") as f:
