@@ -1,6 +1,7 @@
 import os
 import json
 import requests
+import datetime
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 SERPER_API_KEY = os.environ.get("SERPER_API_KEY")
@@ -34,7 +35,7 @@ def fetch_reddit_via_serper():
         print(f"Ошибка Serper API: {response.status_code}")
         return None
     except Exception as e:
-        print(f"Ошибка запроса к Serper: {e}")
+        print(f"Ошибка запроса к Серперу: {e}")
         return None
 
 def update_playlist_json(search_context):
@@ -88,14 +89,17 @@ def update_playlist_json(search_context):
             result = response.json()['choices'][0]['message']['content'].strip()
             print(f"Ответ от DeepSeek: {result}")
             
-            # Очистка от возможных маркdown-тегов
+            # Очистка от возможных markdown-тегов
             if result.startswith("```json"):
                 result = result[7:-3].strip()
             elif result.startswith("```"):
                 result = result[3:-3].strip()
             
-            # Проверяем, что это валидный JSON, и сразу пишем в файл
+            # Проверяем валидность JSON
             parsed_json = json.loads(result)
+            
+            # Добавляем или обновляем поле времени, чтобы файл гарантированно менялся
+            parsed_json["last_updated"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             with open("playlist.json", "w", encoding="utf-8") as f:
                 json.dump(parsed_json, f, ensure_ascii=False, indent=2)
