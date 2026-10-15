@@ -30,6 +30,7 @@ def google_search(query):
             data = response.json()
             results_text = ""
             
+            # Приоритетный захват блока AI Overview / Answer Box
             answer_box = data.get('answerBox')
             if answer_box and isinstance(answer_box, dict):
                 snippet = answer_box.get('snippet', '') or answer_box.get('title', '')
@@ -48,19 +49,20 @@ def google_search(query):
     return ""
 
 def step_1_get_current_season():
-    """Шаг 1: Полностью автоматическое определение серии и сезона из AI Overview."""
-    print("Шаг 1: Автоматическое определение текущей серии и сезона...")
-    # Сфокусированный запрос для получения актуальной серии из AI Overview
-    result = google_search("current series and season forza horizon 6")
+    """Шаг 1: Автоматическое определение серии и сезона с привязкой к октябрю 2026 года."""
+    print("Шаг 1: Запрос актуального сезона (октябрь 2026)...")
+    # Добавляем привязку к дате, чтобы поисковик не цеплял старые серии
+    result = google_search("current series and season forza horizon 6 october 2026")
     
     series_name = "Series 6"
     season_name = "Autumn"
     
     try:
         prompt = f"""
-        Analyze the AI OVERVIEW and search results text below. Extract the CURRENT active Series number (e.g., Series 6) and the CURRENT active Season right now (e.g., Summer, Autumn, Winter, Spring).
-        Return the response STRICTLY in the format: Series X | Season (e.g., Series 6 | Autumn). Do not add any other text.
-        Text: {result[:2000]}
+        Analyze the search results text below. What is the CURRENT active series and season for Forza Horizon 6 right now in October 2026? 
+        Look for Series 6 and the current active week.
+        Return the response STRICTLY in the format: Series X | Season (e.g., Series 6 | Autumn). No other text!
+        Text: {result[:2500]}
         """
         response = requests.post(
             "https://api.deepseek.com/chat/completions",
@@ -74,18 +76,18 @@ def step_1_get_current_season():
         )
         if response.status_code == 200:
             content = response.json()['choices'][0]['message']['content'].strip()
-            print(f"ИИ автоматически определил: {content}")
+            print(f"ИИ определил: {content}")
             if "|" in content:
                 parts = content.split("|")
                 series_name = parts[0].strip()
                 season_name = parts[1].strip()
     except Exception as e:
-        print(f"Ошибка автоматического определения: {e}")
+        print(f"Ошибка определения: {e}")
         
     return series_name, season_name
 
 def step_2_fetch_playlist_data(series_name, season_name):
-    """Шаг 2: Поиск наград под автоматически определенные серию и сезон."""
+    """Шаг 2: Поиск гайдов и наград под актуальные серию и сезон."""
     query = f"FH6 {series_name} {season_name} Breakdown and Rewards Reddit"
     print(f"Шаг 2 - Поиск гайдов: {query}")
     search_context = google_search(query)
@@ -102,7 +104,7 @@ def step_2_fetch_playlist_data(series_name, season_name):
     
     RULE 1: Return STRICTLY valid JSON without Markdown formatting (no ```json and no ```).
     RULE 2: Completely ignore Forza Horizon 5 (FH5).
-    RULE 3: The lists cars_20pts and cars_40pts must NOT be empty! Extract real rewards from the guides below, or use accurate rewards for {series_name} {season_name}.
+    RULE 3: The lists cars_20pts and cars_40pts must NOT be empty! Extract real rewards from the guides below for {series_name} {season_name}.
     
     JSON Template:
     {{
@@ -154,7 +156,7 @@ def step_3_verify_data(json_data):
     }
     
     verification_prompt = f"""
-    Check the following JSON object for correctness regarding Forza Horizon 6:
+    Check the following JSON object for correctness and relevance to Forza Horizon 6:
     {json.dumps(json_data, ensure_ascii=False)}
     
     Answer ONLY with the word "OK" if the data is logical and relates to FH6. If there is an error, write "ERROR".
@@ -182,7 +184,7 @@ def step_3_verify_data(json_data):
 
 if __name__ == "__main__":
     series, season = step_1_get_current_season()
-    print(f"Автоматически определено -> Серия: {series}, Сезон: {season}")
+    print(f"Определено -> Серия: {series}, Сезон: {season}")
     
     playlist_data = step_2_fetch_playlist_data(series, season)
     
@@ -197,7 +199,7 @@ if __name__ == "__main__":
             
             with open("playlist.json", "w", encoding="utf-8") as f:
                 json.dump(playlist_data, f, ensure_ascii=False, indent=2)
-            print("Файл playlist.json успешно обновлен на автомате!")
+            print("Файл playlist.json успешно обновлен!")
         else:
             print("Верификация отклонила данные.")
     else:
