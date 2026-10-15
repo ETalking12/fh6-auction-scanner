@@ -8,7 +8,7 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 SERPER_API_KEY = os.environ.get("SERPER_API_KEY")
 
 def google_search(query):
-    """Выполняет поисковый запрос с русской локалью для получения точного AI Overview."""
+    """Выполняет поисковый запрос с американской локалью для получения стабильного англоязычного AI Overview."""
     if not SERPER_API_KEY:
         return ""
         
@@ -20,8 +20,8 @@ def google_search(query):
     payload = json.dumps({
         "q": query,
         "num": 5,
-        "gl": "ru",
-        "hl": "ru"
+        "gl": "us",
+        "hl": "en"
     })
     
     try:
@@ -59,9 +59,9 @@ def step_1_get_current_season():
     
     try:
         prompt = f"""
-        Проанализируй текст поисковой выдачи Google ниже (особенно блок AI OVERVIEW). Точно определи текущую серию и активный сезон прямо сейчас (например, Series 6 и Autumn).
-        Верни ответ СТРОГО в формате: Серия | Сезон (например: Series 6 | Autumn).
-        Текст: {result[:2000]}
+        Analyze the Google search results text below (especially the AI OVERVIEW block). Accurately determine the current series and active season right now (e.g., Series 6 and Autumn).
+        Return the response STRICTLY in the format: Series | Season (e.g., Series 6 | Autumn).
+        Text: {result[:2000]}
         """
         response = requests.post(
             "https://api.deepseek.com/chat/completions",
@@ -98,14 +98,14 @@ def step_2_fetch_playlist_data(series_name, season_name):
     }
 
     prompt = f"""
-    Вы — профессиональный парсер данных для базы аукциона Forza Horizon 6.
-    Сформируйте JSON для сезона: {season_name.upper()}, {series_name} (Horizon Meets).
+    You are a professional data parser for the Forza Horizon 6 auction database.
+    Generate a JSON object for the season: {season_name.upper()}, {series_name} (Horizon Meets).
     
-    ПРАВИЛО 1: Верните СТРОГО валидный JSON без форматирования Markdown (без ```json и без ```).
-    ПРАВИЛО 2: Категорически игнорируйте Forza Horizon 5 (FH5).
-    ПРАВИЛО 3: Списки cars_20pts и cars_40pts не должны быть пустыми! Укажите реальные награды из текстов гайдов ниже, а если их нет — актуальные машины серии (например, 2018 DeBerti Ford Mustang GT).
+    RULE 1: Return STRICTLY valid JSON without Markdown formatting (no ```json and no ```).
+    RULE 2: Completely ignore Forza Horizon 5 (FH5).
+    RULE 3: The lists cars_20pts and cars_40pts must NOT be empty! Extract real rewards from the guides below, or use top series rewards if not found (e.g., 2018 DeBerti Ford Mustang GT).
     
-    Шаблон JSON:
+    JSON Template:
     {{
       "current_season": "{season_name.upper()}",
       "series_number": "{series_name}: Horizon Meets",
@@ -116,10 +116,10 @@ def step_2_fetch_playlist_data(series_name, season_name):
       "cars_40pts": [
         {{"name": "1998 TVR Cerbera Speed 12", "est_value": "цены нет"}}
       ],
-      "trading_advice": "Совет по трейдингу для сезона {season_name} серии {series_name}: выставляйте редкие награды плейлиста с завышенной стартовой ценой в первые дни."
+      "trading_advice": "Trading advice for {season_name} of {series_name}: list rare playlist rewards at a high starting price during the first few days."
     }}
 
-    Контекст из интернета:
+    Internet Context:
     {search_context}
     """
 
@@ -155,10 +155,10 @@ def step_3_verify_data(json_data):
     }
     
     verification_prompt = f"""
-    Проверь следующий JSON-объект на корректность для Forza Horizon 6:
+    Check the following JSON object for correctness regarding Forza Horizon 6:
     {json.dumps(json_data, ensure_ascii=False)}
     
-    Ответь ТОЛЬКО словом "OK", если данные логичны и относятся к FH6. Если есть ошибка — напиши "ERROR".
+    Answer ONLY with the word "OK" if the data is logical and relates to FH6. If there is an error, write "ERROR".
     """
     
     try:
