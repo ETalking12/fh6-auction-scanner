@@ -9,6 +9,8 @@ on:
 jobs:
   update-playlist:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # <--- ВОТ ЭТОЙ СТРОКИ НЕ ХВАТАЛО ДЛЯ РАЗРЕШЕНИЯ PUSH
     steps:
       - name: Checkout репозитория
         uses: actions/checkout@v4
