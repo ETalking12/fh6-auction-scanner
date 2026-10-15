@@ -8,7 +8,7 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 SERPER_API_KEY = os.environ.get("SERPER_API_KEY")
 
 def google_search(query):
-    """Выполняет поисковый запрос с американской локалью для получения стабильного англоязычного AI Overview."""
+    """Выполняет поисковый запрос с американской локалью для стабильного AI Overview."""
     if not SERPER_API_KEY:
         return ""
         
@@ -30,14 +30,12 @@ def google_search(query):
             data = response.json()
             results_text = ""
             
-            # Захватываем ИИ-сводку (AI Overview / Answer Box)
             answer_box = data.get('answerBox')
             if answer_box and isinstance(answer_box, dict):
                 snippet = answer_box.get('snippet', '') or answer_box.get('title', '')
                 if snippet:
-                    results_text += f"AI OVERVIEW (ГЛАВНЫЙ ОТВЕТ): {snippet}\n\n"
+                    results_text += f"AI OVERVIEW: {snippet}\n\n"
                     
-            # Захватываем органику
             for item in data.get('organic', []):
                 if isinstance(item, dict):
                     title = item.get('title', '')
@@ -50,17 +48,18 @@ def google_search(query):
     return ""
 
 def step_1_get_current_season():
-    """Шаг 1: Получаем точные данные из AI Overview Google."""
-    print("Шаг 1: Запрос текущего сезона с учетом AI Overview...")
-    result = google_search("Season forza horizon 6")
+    """Шаг 1: Полностью автоматическое определение серии и сезона из AI Overview."""
+    print("Шаг 1: Автоматическое определение текущей серии и сезона...")
+    # Сфокусированный запрос для получения актуальной серии из AI Overview
+    result = google_search("current series and season forza horizon 6")
     
     series_name = "Series 6"
     season_name = "Autumn"
     
     try:
         prompt = f"""
-        Analyze the Google search results text below (especially the AI OVERVIEW block). Accurately determine the current series and active season right now (e.g., Series 6 and Autumn).
-        Return the response STRICTLY in the format: Series | Season (e.g., Series 6 | Autumn).
+        Analyze the AI OVERVIEW and search results text below. Extract the CURRENT active Series number (e.g., Series 6) and the CURRENT active Season right now (e.g., Summer, Autumn, Winter, Spring).
+        Return the response STRICTLY in the format: Series X | Season (e.g., Series 6 | Autumn). Do not add any other text.
         Text: {result[:2000]}
         """
         response = requests.post(
@@ -75,18 +74,18 @@ def step_1_get_current_season():
         )
         if response.status_code == 200:
             content = response.json()['choices'][0]['message']['content'].strip()
-            print(f"ИИ определил из AI Overview: {content}")
+            print(f"ИИ автоматически определил: {content}")
             if "|" in content:
                 parts = content.split("|")
                 series_name = parts[0].strip()
                 season_name = parts[1].strip()
     except Exception as e:
-        print(f"Ошибка анализа сезона: {e}")
+        print(f"Ошибка автоматического определения: {e}")
         
     return series_name, season_name
 
 def step_2_fetch_playlist_data(series_name, season_name):
-    """Шаг 2: Поиск детальных наград на основе найденного сезона."""
+    """Шаг 2: Поиск наград под автоматически определенные серию и сезон."""
     query = f"FH6 {series_name} {season_name} Breakdown and Rewards Reddit"
     print(f"Шаг 2 - Поиск гайдов: {query}")
     search_context = google_search(query)
@@ -99,11 +98,11 @@ def step_2_fetch_playlist_data(series_name, season_name):
 
     prompt = f"""
     You are a professional data parser for the Forza Horizon 6 auction database.
-    Generate a JSON object for the season: {season_name.upper()}, {series_name} (Horizon Meets).
+    Generate a JSON object for: {season_name.upper()}, {series_name}.
     
     RULE 1: Return STRICTLY valid JSON without Markdown formatting (no ```json and no ```).
     RULE 2: Completely ignore Forza Horizon 5 (FH5).
-    RULE 3: The lists cars_20pts and cars_40pts must NOT be empty! Extract real rewards from the guides below, or use top series rewards if not found (e.g., 2018 DeBerti Ford Mustang GT).
+    RULE 3: The lists cars_20pts and cars_40pts must NOT be empty! Extract real rewards from the guides below, or use accurate rewards for {series_name} {season_name}.
     
     JSON Template:
     {{
@@ -183,7 +182,7 @@ def step_3_verify_data(json_data):
 
 if __name__ == "__main__":
     series, season = step_1_get_current_season()
-    print(f"Определено -> Серия: {series}, Сезон: {season}")
+    print(f"Автоматически определено -> Серия: {series}, Сезон: {season}")
     
     playlist_data = step_2_fetch_playlist_data(series, season)
     
@@ -198,7 +197,7 @@ if __name__ == "__main__":
             
             with open("playlist.json", "w", encoding="utf-8") as f:
                 json.dump(playlist_data, f, ensure_ascii=False, indent=2)
-            print("Файл playlist.json успешно обновлен!")
+            print("Файл playlist.json успешно обновлен на автомате!")
         else:
             print("Верификация отклонила данные.")
     else:
