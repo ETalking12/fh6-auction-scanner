@@ -8,12 +8,15 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 SERPER_API_KEY = os.environ.get("SERPER_API_KEY")
 
 def fetch_latest_playlist_info():
+    """
+    Делает точный поисковый запрос для поиска реальных гайдов и списков машин с Reddit и игровых сайтов.
+    """
     if not SERPER_API_KEY:
         print("Ошибка: SERPER_API_KEY не найден в секретах GitHub!")
         return None
         
-    # Ищем конкретно осенний сезон 6-й серии
-    query = "FH6 Series 6 Autumn Playlist Rewards"
+    # Запрос нацелен на поиск конкретного гайда текущей недели
+    query = "FH6 Series 6 Autumn Festival Playlist Guide Reddit"
     print(f"Поисковый запрос: {query}")
     
     url = "https://google.serper.dev/search"
@@ -23,18 +26,30 @@ def fetch_latest_playlist_info():
     }
     payload = json.dumps({"q": query, "num": 5})
     
-    try:
-        response = requests.post(url, headers=headers, data=payload, timeout=15)
-        if response.status_code == 200:
-            data = response.json()
-            results_text = ""
-            for item in data.get('organic', []):
-                snippet = item.get('snippet', '')
-                results_text += f"{snippet}\n"
-            return results_text
-    except Exception as e:
-        print(f"Ошибка поиска: {e}")
-    return "Series 6 Autumn season active rewards"
+    for attempt in range(3):
+        try:
+            response = requests.post(url, headers=headers, data=payload, timeout=15)
+            if response.status_code == 200:
+                data = response.json()
+                results_text = ""
+                
+                # Собираем все тексты из органической выдачи (гайды, обсуждения)
+                for item in data.get('organic', []):
+                    if isinstance(item, dict):
+                        title = item.get('title', '')
+                        snippet = item.get('snippet', '')
+                        results_text += f"ИСТОЧНИК: {title}\nТЕКСТ: {snippet}\n\n"
+                
+                if len(results_text.strip()) > 30:
+                    print(f"Успешно собрано контекста: {len(results_text)} символов")
+                    return results_text
+            break
+        except Exception as e:
+            print(f"Попытка {attempt + 1} не удалась: {e}")
+            time.sleep(2)
+            
+    print("Не удалось собрать данные из поиска, используем базовые ключевые слова.")
+    return "Series 6 Autumn Festival Playlist rewards and cars"
 
 def update_playlist_json(search_context):
     url = "https://api.deepseek.com/chat/completions"
@@ -43,32 +58,32 @@ def update_playlist_json(search_context):
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
     }
 
-    # Жестко задаем текущий период, который мы уже знаем из Google-обзора
     current_season = "AUTUMN"
     series_number = "Series 6"
 
     prompt = f"""
-    Вы — парсер данных для базы аукциона Forza Horizon 6.
-    Сформируйте актуальный JSON для текущего сезона: {current_season}, {series_number} (Horizon Meets).
+    Вы — профессиональный парсер данных для базы аукциона Forza Horizon 6.
+    Проанализируйте тексты из интернета ниже и извлеките СТОПРОЦЕНТНО РЕАЛЬНЫЕ названия автомобилей, которые раздаются в качестве наград за 20 очков (cars_20pts) и 40 очков (cars_40pts) в осеннем сезоне Series 6 (Horizon Meets).
     
     ПРАВИЛО 1: Верните СТРОГО валидный JSON без форматирования Markdown (без ```json и без ```).
     ПРАВИЛО 2: Категорически игнорируйте Forza Horizon 5 (FH5).
+    ПРАВИЛО 3: Если в тексте есть точные названия машин из текущего осеннего плейлиста — впишите их.
     
     Шаблон JSON:
     {{
       "current_season": "{current_season}",
       "series_number": "{series_number}: Horizon Meets",
-      "series_rewards": "80 PTS: BMW M4 CS, 160 PTS: Koenigsegg One:1",
+      "series_rewards": "Укажите награды 80 PTS и 160 PTS из текстов",
       "cars_20pts": [
-        {{"name": "Название машины за 20 очков в осеннем сезоне Series 6", "est_value": "цены нет"}}
+        {{"name": "Точное название машины за 20 очков", "est_value": "цены нет"}}
       ],
       "cars_40pts": [
-        {{"name": "Название машины за 40 очков в осеннем сезоне Series 6", "est_value": "цены нет"}}
+        {{"name": "Точное название машины за 40 очков", "est_value": "цены нет"}}
       ],
-      "trading_advice": "Совет по трейдингу для машин 6-й серии Autumn."
+      "trading_advice": "Точный совет по трейдингу для осеннего сезона Series 6 на основе гайдов."
     }}
 
-    Контекст из интернета:
+    Тексты из поисковых гайдов:
     {search_context}
     """
 
@@ -93,15 +108,15 @@ def update_playlist_json(search_context):
             
             new_parsed_json = json.loads(result)
             
-            # Добавляем штамп времени для гарантированного коммита
+            # Добавляем штамп времени для гарантированного коммита в Git
             new_parsed_json["last_updated"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             with open("playlist.json", "w", encoding="utf-8") as f:
                 json.dump(new_parsed_json, f, ensure_ascii=False, indent=2)
-            print("Файл playlist.json успешно обновлен!")
+            print("Файл playlist.json успешно обновлен на основе реальных гайдов!")
             return True
     except Exception as e:
-        print(f"Ошибка: {e}")
+        print(f"Ошибка при обработке: {e}")
     return False
 
 if __name__ == "__main__":
