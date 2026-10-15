@@ -49,16 +49,11 @@ def google_search(query):
 
 def step_1_get_current_season():
     """Шаг 1: Самостоятельное определение активных серии и сезона с динамической текущей датой."""
-    # Динамически получаем текущий месяц и год (например, "October 2026", в ноябре будет "November 2026")
     current_date_context = datetime.datetime.now().strftime("%B %Y")
     query = f"current season forza horizon 6 {current_date_context}"
     
     print(f"Шаг 1: Запрос с динамическим контекстом даты ({current_date_context})...")
     result = google_search(query)
-    
-    print("--- Сырой текст из Google ---")
-    print(result[:1000])
-    print("----------------------------")
     
     series_name = None
     season_name = None
@@ -153,8 +148,12 @@ def step_2_fetch_playlist_data(series_name, season_name):
     return None
 
 def step_3_verify_data(json_data):
-    """Шаг 3: Верификация перед сохранением."""
+    """Шаг 3: Верификация перед сохранением с логгированием JSON."""
     print("Шаг 3: Проверочный запрос (верификация)...")
+    print("--- Сгенерированный JSON для проверки ---")
+    print(json.dumps(json_data, ensure_ascii=False, indent=2))
+    print------------------------------------------
+    
     url = "https://api.deepseek.com/chat/completions"
     headers = {
         "Content-Type": "application/json",
@@ -162,10 +161,10 @@ def step_3_verify_data(json_data):
     }
     
     verification_prompt = f"""
-    Check the following JSON object for correctness and relevance to Forza Horizon 6:
+    Check the following JSON object for correctness and relevance to Forza Horizon 6. Empty lists for cars_20pts or cars_40pts are acceptable if data is not found in search snippets.
     {json.dumps(json_data, ensure_ascii=False)}
     
-    Answer ONLY with the word "OK" if the data is logical and relates to FH6. If there is an error, write "ERROR".
+    Answer ONLY with the word "OK" if the data is logical and relates to FH6. If there is a critical error, write "ERROR".
     """
     
     try:
@@ -184,7 +183,7 @@ def step_3_verify_data(json_data):
             print(f"Ответ верификатора: {answer}")
             return "OK" in answer
     except Exception as e:
-        print(f"Ошибка верификации: {e}")
+        print(f"Ошибка верификации: {e})"
         
     return True
 
