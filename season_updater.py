@@ -30,7 +30,6 @@ def google_search(query):
             data = response.json()
             results_text = ""
             
-            # Приоритетный захват блока AI Overview / Answer Box
             answer_box = data.get('answerBox')
             if answer_box and isinstance(answer_box, dict):
                 snippet = answer_box.get('snippet', '') or answer_box.get('title', '')
@@ -51,7 +50,6 @@ def google_search(query):
 def step_1_get_current_season():
     """Шаг 1: Автоматическое определение серии и сезона с привязкой к октябрю 2026 года."""
     print("Шаг 1: Запрос актуального сезона (октябрь 2026)...")
-    # Добавляем привязку к дате, чтобы поисковик не цеплял старые серии
     result = google_search("current series and season forza horizon 6 october 2026")
     
     series_name = "Series 6"
@@ -87,7 +85,7 @@ def step_1_get_current_season():
     return series_name, season_name
 
 def step_2_fetch_playlist_data(series_name, season_name):
-    """Шаг 2: Поиск гайдов и наград под актуальные серию и сезон."""
+    """Шаг 2: Поиск гайдов и наград под актуальные серию и сезон без искусственных заглушек."""
     query = f"FH6 {series_name} {season_name} Breakdown and Rewards Reddit"
     print(f"Шаг 2 - Поиск гайдов: {query}")
     search_context = google_search(query)
@@ -104,20 +102,16 @@ def step_2_fetch_playlist_data(series_name, season_name):
     
     RULE 1: Return STRICTLY valid JSON without Markdown formatting (no ```json and no ```).
     RULE 2: Completely ignore Forza Horizon 5 (FH5).
-    RULE 3: The lists cars_20pts and cars_40pts must NOT be empty! Extract real rewards from the guides below for {series_name} {season_name}.
+    RULE 3: Extract real reward cars from the guides below for cars_20pts and cars_40pts. If information is genuinely missing, leave the lists empty ([]). Do not invent or hardcode fake cars.
     
     JSON Template:
     {{
       "current_season": "{season_name.upper()}",
       "series_number": "{series_name}: Horizon Meets",
-      "series_rewards": "80 PTS: BMW M4 CS, 160 PTS: Koenigsegg One:1",
-      "cars_20pts": [
-        {{"name": "2018 DeBerti Ford Mustang GT", "est_value": "цены нет"}}
-      ],
-      "cars_40pts": [
-        {{"name": "1998 TVR Cerbera Speed 12", "est_value": "цены нет"}}
-      ],
-      "trading_advice": "Trading advice for {season_name} of {series_name}: list rare playlist rewards at a high starting price during the first few days."
+      "series_rewards": "",
+      "cars_20pts": [],
+      "cars_40pts": [],
+      "trading_advice": ""
     }}
 
     Internet Context:
@@ -159,7 +153,7 @@ def step_3_verify_data(json_data):
     Check the following JSON object for correctness and relevance to Forza Horizon 6:
     {json.dumps(json_data, ensure_ascii=False)}
     
-    Answer ONLY with the word "OK" if the data is logical and relates to FH6. If there is an error, write "ERROR".
+    Answer ONLY with the word "OK" if the data is logical and relates to FH6. If there is a critical error, write "ERROR".
     """
     
     try:
@@ -189,17 +183,12 @@ if __name__ == "__main__":
     playlist_data = step_2_fetch_playlist_data(series, season)
     
     if playlist_data:
-        if not playlist_data.get("cars_20pts"):
-            playlist_data["cars_20pts"] = [{"name": "2018 DeBerti Ford Mustang GT", "est_value": "цены нет"}]
-        if not playlist_data.get("cars_40pts"):
-            playlist_data["cars_40pts"] = [{"name": "1998 TVR Cerbera Speed 12", "est_value": "цены нет"}]
-            
         if step_3_verify_data(playlist_data):
             playlist_data["last_updated"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             with open("playlist.json", "w", encoding="utf-8") as f:
                 json.dump(playlist_data, f, ensure_ascii=False, indent=2)
-            print("Файл playlist.json успешно обновлен!")
+            print("Файл playlist.json успешно обновлен без заглушек!")
         else:
             print("Верификация отклонила данные.")
     else:
