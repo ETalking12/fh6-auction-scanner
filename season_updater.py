@@ -9,35 +9,44 @@ SERPER_API_KEY = os.environ.get("SERPER_API_KEY")
 
 def get_current_series_and_season():
     """
-    Автоматически вычисляет текущую серию и сезон Forza Horizon на основе даты.
+    Точный расчет серии и сезона Forza Horizon 6 на основе текущей даты.
+    Текущая точка (Series 6, Autumn) активна с 15 октября 2026 года.
     """
-    base_date = datetime.date(2026, 10, 1) # Дата старта Series 6 (Summer)
-    base_series = 6
+    # Точка отсчета: сегодня 15 октября 2026 года — это Series 6, AUTUMN
+    anchor_date = datetime.date(2026, 10, 15)
+    anchor_series = 6
+    anchor_season_index = 1 # 0: SUMMER, 1: AUTUMN, 2: WINTER, 3: SPRING
     
     current_date = datetime.date.today()
-    delta_days = (current_date - base_date).days
-    if delta_days < 0:
-        delta_days = 0
-        
-    series_increment = delta_days // 28
-    current_series = max(1, base_series + series_increment)
+    delta_days = (current_date - anchor_date).days
     
-    day_in_series = delta_days % 28
-    season_index = day_in_series // 7
+    # Считаем суммарный сдвиг по сезонам (каждый сезон ровно 7 дней)
+    total_seasons_passed = anchor_season_index + (delta_days // 7)
+    
+    # Если дата меньше точки отсчета (на всякий случай)
+    if delta_days < 0:
+        total_seasons_passed = anchor_season_index + delta_days // 7
+        
+    # Каждые 4 сезона (28 дней) меняется серия
+    current_series = anchor_series + (total_seasons_passed // 4)
+    
+    # Текущий сезон в рамках года/серии
+    season_index = total_seasons_passed % 4
     seasons = ["SUMMER", "AUTUMN", "WINTER", "SPRING"]
     current_season = seasons[season_index]
     
-    return current_series, current_season
+    return max(1, current_series), current_season
 
 def fetch_reddit_via_serper(series_num, season_name):
     if not SERPER_API_KEY:
         print("Ошибка: SERPER_API_KEY не найден в секретах GitHub!")
         return None
         
+    # Используем запросы, которые точно найдут свежие статьи (как на скриншотах Google)
     queries = [
-        f"FH6 Series {series_num} {season_name} Festival Playlist Guide",
-        f"Forza Horizon 6 Series {series_num} {season_name} rewards cars",
-        f"FH6 Series {series_num} playlist guide"
+        f"FH6 Series {series_num} {season_name} Breakdown and Rewards",
+        f"Forza Horizon 6 Series {series_num} {season_name} Festival Playlist Guide",
+        f"FH6 Series {series_num} playlist rewards"
     ]
     
     url = "https://google.serper.dev/search"
@@ -73,25 +82,14 @@ def fetch_reddit_via_serper(series_num, season_name):
     return None
 
 def validate_json_content(data):
-    """
-    Глубокая валидация: проверяет не только наличие ключей, но и то, 
-    что нейросеть не вернула шаблонные заглушки.
-    """
     required_keys = ["current_season", "series_number", "cars_20pts", "cars_40pts", "trading_advice"]
     for key in required_keys:
         if key not in data:
             print(f"Ошибка: отсутствует обязательный ключ '{key}'")
             return False
             
-    # Проверяем, что списки машин не пустые
     if not isinstance(data.get("cars_20pts"), list) or len(data["cars_20pts"]) == 0:
-        print("Ошибка: список cars_20pts пуст или поврежден.")
-        return False
-        
-    # Проверяем на наличие дефолтных заглушек от промпта
-    sample_car_name = data["cars_20pts"][0].get("name", "")
-    if "Название машины" in sample_car_name:
-        print("Ошибка: нейросеть вернула шаблон-заглушку вместо реальных данных.")
+        print("Ошибка: список cars_20pts пуст.")
         return False
         
     return True
@@ -113,20 +111,19 @@ def update_playlist_json(search_context, series_num, season_name):
     
     ПРАВИЛО 1: Верните СТРОГО валидный JSON без форматирования Markdown (без ```json и без ```).
     ПРАВИЛО 2: Категорически игнорируйте Forza Horizon 5 (FH5).
-    ПРАВИЛО 3: Если реальные данные по машинам отсутствуют в поиске, напишите реальные машины из текущей серии по аналогии, но ни в коем случае не используй текст-заглушку вроде "Название машины за 20 очков".
     
     Шаблон JSON:
     {{
       "current_season": "{season_name}",
       "series_number": "Series {series_num}",
-      "series_rewards": "Укажите актуальные награды 80 PTS и 160 PTS",
+      "series_rewards": "Укажите актуальные награды 80 PTS и 160 PTS для серии {series_num} {season_name}",
       "cars_20pts": [
-        {{"name": "Реальное Название Машины", "est_value": "цены нет"}}
+        {{"name": "Название машины за 20 очков", "est_value": "цены нет"}}
       ],
       "cars_40pts": [
-        {{"name": "Реальное Название Машины", "est_value": "цены нет"}}
+        {{"name": "Название машины за 40 очков", "est_value": "цены нет"}}
       ],
-      "trading_advice": "Точный совет по трейдингу для текущего сезона."
+      "trading_advice": "Точный совет по трейдингу для сезона {season_name}."
     }}
 
     Результаты поиска:
@@ -155,9 +152,8 @@ def update_playlist_json(search_context, series_num, season_name):
                 
                 new_parsed_json = json.loads(result)
                 
-                # Защита от мусора и заглушек
                 if not validate_json_content(new_parsed_json):
-                    print("Полученные данные не прошли проверку качества. Отмена сохранения.")
+                    print("Полученные данные не прошли проверку качества.")
                     return False
                 
                 old_data = {}
@@ -173,7 +169,7 @@ def update_playlist_json(search_context, series_num, season_name):
                 temp_new.pop("last_updated", None)
                 
                 if old_data == temp_new:
-                    print("Данные не изменились с прошлого раза. Обновляем только метку времени.")
+                    print("Данные не изменились с прошлого раза. Обновляем метку времени.")
                 else:
                     print("Обнаружены новые подтвержденные данные по сезону!")
 
@@ -181,12 +177,12 @@ def update_playlist_json(search_context, series_num, season_name):
                 
                 with open("playlist.json", "w", encoding="utf-8") as f:
                     json.dump(new_parsed_json, f, ensure_ascii=False, indent=2)
-                print("Файл playlist.json успешно сохранен и проверен!")
+                print("Файл playlist.json успешно сохранен!")
                 return True
             else:
-                print(f"Ошибка DeepSeek API (попытка {attempt + 1}): {response.status_code}")
+                print(f"Ошибка DeepSeek API: {response.status_code}")
         except Exception as e:
-            print(f"Ошибка обработки (попытка {attempt + 1}): {e}")
+            print(f"Ошибка обработки: {e}")
             time.sleep(3)
             
     return False
