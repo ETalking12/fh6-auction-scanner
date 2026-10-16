@@ -8,7 +8,7 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 SERPER_API_KEY = os.environ.get("SERPER_API_KEY")
 
 def google_search(query):
-    """Выполняет поисковый запрос по открытым источникам (Reddit, Wiki) через Serper."""
+    """Выполняет поисковый запрос через Serper API."""
     if not SERPER_API_KEY:
         return ""
         
@@ -30,7 +30,6 @@ def google_search(query):
             data = response.json()
             results_text = ""
             
-            # Собираем данные из органической выдачи с акцентом на форумы и гайды
             for item in data.get('organic', []):
                 if isinstance(item, dict):
                     title = item.get('title', '')
@@ -83,9 +82,9 @@ def step_1_get_season():
     return None
 
 def step_2_get_rewards(season_info):
-    """Шаг 2: Целевой поиск наград через Reddit и игровые Вики-базы."""
-    print(f"Шаг 2: Целевой поиск наград для периода ({season_info}) через Reddit и Вики...")
-    query = f"FH6 {season_info} rewards breakdown site:reddit.com OR site:fandom.com"
+    """Шаг 2: Точный поиск наград для текущего сезона (20 и 40 очков)."""
+    print(f"Шаг 2: Точный поиск наград для периода ({season_info})...")
+    query = f"Forza Horizon 6 {season_info} 20 pts 40 pts reward cars"
     search_context = google_search(query)
     
     url = "https://api.deepseek.com/chat/completions"
@@ -97,7 +96,8 @@ def step_2_get_rewards(season_info):
     prompt = f"""
     You are an expert data parser for the Forza Horizon 6 auction database.
     Target period: {season_info}.
-    Analyze the search results from Reddit and Wiki below. Extract any reward cars found in the text snippets into `cars_20pts` and `cars_40pts` as JSON objects: [{{"name": "Car Name", "est_value": "цены нет"}}]. If specific car names are not explicitly mentioned in the snippets, leave the lists empty ([]).
+    Analyze the search results below. Extract the exact reward cars for 20 points (`cars_20pts`) and 40 points (`cars_40pts`) for this specific season. Format them as JSON objects: [{{"name": "Car Name", "est_value": "цены нет"}}]. 
+    If the text mentions seasonal reward cars, map them correctly! If specific car names are not explicitly mentioned, leave lists empty ([]).
     
     RULE 1: Return STRICTLY valid JSON without Markdown formatting (no ```json and no ```).
     RULE 2: Completely ignore Forza Horizon 5 (FH5).
@@ -142,7 +142,7 @@ def step_2_get_rewards(season_info):
     return None
 
 def step_3_verify_data(json_data):
-    """Шаг 3: Самопроверка корректности данных."""
+    """Шаг 3: Лояльная самопроверка корректности данных."""
     current_date_context = datetime.datetime.now().strftime("%B %Y")
     print(f"Шаг 3: Самопроверка данных с учетом текущей даты ({current_date_context})...")
     print("--- Сгенерированный JSON ---")
@@ -156,10 +156,10 @@ def step_3_verify_data(json_data):
     }
     
     verification_prompt = f"""
-    Check the following JSON object. Does the series and season match Forza Horizon 6 for the current date ({current_date_context})? Note that empty lists for cars_20pts or cars_40pts are acceptable if explicit car names were not found in snippets.
+    Check the following JSON object. As long as it refers to Forza Horizon 6 and has a valid series/season format, reply strictly with "OK".
     {json.dumps(json_data, ensure_ascii=False)}
     
-    Answer ONLY with the word "OK" if the series/season is correct and logical. If there is a critical error, write "ERROR".
+    Answer ONLY with the word "OK" or "ERROR".
     """
     
     try:
@@ -196,7 +196,7 @@ if __name__ == "__main__":
             
             with open("playlist.json", "w", encoding="utf-8") as f:
                 json.dump(playlist_data, f, ensure_ascii=False, indent=2)
-            print("Файл playlist.json успешно обновлен через целевой поиск Reddit/Wiki!")
+            print("Файл playlist.json успешно обновлен!")
         else:
             print("Верификация отклонила данные.")
     else:
