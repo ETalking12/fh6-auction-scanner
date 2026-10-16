@@ -59,7 +59,6 @@ def step_2_process_with_deepseek(raw_search_text):
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
     }
 
-    # Интеллектуальный промпт с правилами сопоставления для Series 6 Autumn
     prompt = f"""
     Today is {date_str}. You are an expert game data parser for Forza Horizon 6.
     Analyze the raw Google AI Overview text provided below to confirm the current active Series and Season.
@@ -67,24 +66,17 @@ def step_2_process_with_deepseek(raw_search_text):
     Raw Data from Google AI Overview:
     {raw_search_text}
     
-    Based on the confirmed Series 6 and Autumn season, fill out the complete reward structure using standard verified FH5/FH6 festival data mapping for this rotation:
-    - current_season: "Autumn"
-    - series_number: "Series 6"
-    - series_rewards_80pts: 2025 BMW M4 CS
-    - series_rewards_160pts: 2015 Koenigsegg One:1
-    - cars_20pts: 2018 DeBerti Ford Mustang GT
-    - cars_40pts: 2010 Nissan 370Z
-    - trading_advice: "Focus on earning at least 80 points to secure the 2025 BMW M4 CS, and reach 160 points for the 2015 Koenigsegg One:1. The 2018 DeBerti Ford Mustang GT and 2010 Nissan 370Z are great seasonal additions."
+    Based on the confirmed Series 6 and Autumn season, fill out the complete reward structure. All reward fields (`series_rewards_80pts`, `series_rewards_160pts`, `cars_20pts`, `cars_40pts`) must be formatted as arrays of objects:
     
     Required JSON structure:
     {{
       "current_season": "Autumn",
       "series_number": "Series 6",
-      "series_rewards_80pts": {{"name": "2025 BMW M4 CS", "est_value": "цены нет"}},
-      "series_rewards_160pts": {{"name": "2015 Koenigsegg One:1", "est_value": "цены нет"}},
+      "series_rewards_80pts": [{{"name": "2025 BMW M4 CS", "est_value": "цены нет"}}],
+      "series_rewards_160pts": [{{"name": "2015 Koenigsegg One:1", "est_value": "цены нет"}}],
       "cars_20pts": [{{"name": "2018 DeBerti Ford Mustang GT", "est_value": "цены нет"}}],
       "cars_40pts": [{{"name": "2010 Nissan 370Z", "est_value": "цены нет"}}],
-      "trading_advice": "Detailed trading advice based on these rewards."
+      "trading_advice": "Focus on earning at least 80 points to secure the 2025 BMW M4 CS, and reach 160 points for the 2015 Koenigsegg One:1. The 2018 DeBerti Ford Mustang GT and 2010 Nissan 370Z are great seasonal additions."
     }}
     
     RULE 1: Return STRICTLY valid JSON without Markdown formatting (no ```json and no ```).
