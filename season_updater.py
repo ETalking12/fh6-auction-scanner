@@ -6,9 +6,10 @@ import datetime
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 SERPER_API_KEY = os.environ.get("SERPER_API_KEY")
 
-def get_google_ai_overview(query):
-    """Специально вытягивает блок Обзор от ИИ (AI Overview / Answer Box) из Google через Serper."""
+def step_1_fetch_ai_overview():
+    """ЭТАП 1: Получение сырой информации из Google Search / AI Overview."""
     if not SERPER_API_KEY:
+        print("Ошибка: SERPER_API_KEY не задан.")
         return ""
         
     url = "https://google.serper.dev/search"
@@ -16,49 +17,45 @@ def get_google_ai_overview(query):
         'X-API-KEY': SERPER_API_KEY,
         'Content-Type': 'application/json'
     }
+    # Запрос нацелен на получение точного расписания текущей серии и сезона
     payload = json.dumps({
-        "q": query,
+        "q": "Forza Horizon 6 series 6 autumn rewards 20 pts 40 pts 80 pts 160 pts October 2026",
         "num": 5,
         "gl": "us",
         "hl": "en"
     })
     
     try:
+        print("[ЭТАП 1] Запрос данных в Google AI Overview / Search...")
         response = requests.post(url, headers=headers, data=payload, timeout=15)
         if response.status_code == 200:
             data = response.json()
-            context_text = ""
+            raw_text = ""
             
-            # 1. Захватываем блок AI Overview / Answer Box (это то самое «Обзор от ИИ» со скриншота)
+            # Захватываем блок AI Overview / Answer Box если он есть
             if 'answerBox' in data:
                 box = data['answerBox']
-                context_text += f"[GOOGLE AI OVERVIEW]: {box.get('snippet', '')} {box.get('title', '')}\n\n"
-            
-            # Также проверяем расширенные сниппеты ответа
-            if 'snippet' in data.get('answerBox', {}):
-                context_text += f"DETAILS: {data['answerBox']['snippet']}\n\n"
-
-            # 2. Добавляем органику для подстраховки по конкретным наградам
+                raw_text += f"GOOGLE AI OVERVIEW: {box.get('snippet', '')} {box.get('title', '')}\n\n"
+                
+            # Захватываем органические результаты со сниппетами
             for item in data.get('organic', []):
                 if isinstance(item, dict):
-                    context_text += f"SOURCE: {item.get('title', '')} - {item.get('snippet', '')}\n"
+                    raw_text += f"SOURCE TITLE: {item.get('title', '')}\nSNIPPET: {item.get('snippet', '')}\n\n"
                     
-            return context_text
+            print("[ЭТАП 1] Сырой текст успешно получен из поисковой выдачи.")
+            return raw_text
     except Exception as e:
-        print(f"Ошибка получения AI Overview: {e}")
+        print(f"[ЭТАП 1] Ошибка при получении данных из поиска: {e}")
     return ""
 
-def update_playlist_with_ai_overview():
+def step_2_process_with_deepseek(raw_search_text):
+    """ЭТАП 2: Передача собранного текста в DeepSeek для анализа и генерации JSON."""
+    if not DEEPSEEK_API_KEY:
+        print("Ошибка: DEEPSEEK_API_KEY не задан.")
+        return None
+        
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
-    current_month_year = datetime.datetime.now().strftime("%B %Y")
     
-    # Запрос в точности повторяет тот, что дает блок обзора сезона на вашем скриншоте
-    query = f"season forza horizon 6 english series 6 autumn October 2026"
-    print(f"Запрос к Google для получения AI Overview: {query}")
-    
-    ai_overview_context = get_google_ai_overview(query)
-    print(f"Полученный контекст из AI Overview:\n{ai_overview_context}\n" + "-"*40)
-
     url = "https://api.deepseek.com/chat/completions"
     headers = {
         "Content-Type": "application/json",
@@ -66,28 +63,29 @@ def update_playlist_with_ai_overview():
     }
 
     prompt = f"""
-    Today is {date_str} ({current_month_year}). You are an expert data parser for Forza Horizon 6.
-    Analyze the GOOGLE AI OVERVIEW text below carefully. It contains the exact active Series and Season information.
+    Today is {date_str}. You are an expert data analyst for Forza Horizon 6.
+    Analyze the raw search text and Google AI Overview data provided below. 
+    Extract the exact active Series, Season, and ALL reward cars (20 pts, 40 pts, and 80/160 pts series progress rewards). Do not leave fields as "Unknown". Map them accurately based on the text and your knowledge of the series schedule.
     
-    Google AI Overview Data:
-    {ai_overview_context}
-    
-    Your task: Extract the exact active Series (e.g., Series 6) and current Season (e.g., Autumn) from the overview text, and provide the fully populated festival playlist data (including 20 pts, 40 pts, and 80/160 pts series rewards).
+    Raw Search Data:
+    {raw_search_text}
     
     Required JSON structure:
     {{
-      "current_season": "Autumn",
-      "series_number": "Series 6",
+      "current_season": "Exact season name (e.g., Autumn)",
+      "series_number": "Exact series number (e.g., Series 6)",
       "series_rewards_80pts": {{"name": "Exact Car Name for 80 pts series reward", "est_value": "цены нет"}},
       "series_rewards_160pts": {{"name": "Exact Car Name for 160 pts series reward", "est_value": "цены нет"}},
       "cars_20pts": [{{"name": "Exact Car Name for 20 pts", "est_value": "цены нет"}}],
       "cars_40pts": [{{"name": "Exact Car Name for 40 pts", "est_value": "цены нет"}}],
-      "trading_advice": "Trading advice for current series rewards."
+      "trading_advice": "Detailed trading advice for current rewards."
     }}
     
     RULE 1: Return STRICTLY valid JSON without Markdown formatting (no ```json and no ```).
-    RULE 2: Completely ignore Forza Horizon 5 (FH5). Use the exact Series 6 / Autumn data provided in the Google AI Overview.
+    RULE 2: Completely ignore Forza Horizon 5 (FH5). Use only Forza Horizon 6 data.
     """
+
+    print("[ЭТАП 2] Отправка текста на переваривание в DeepSeek...")
 
     try:
         response = requests.post(
@@ -111,24 +109,32 @@ def update_playlist_with_ai_overview():
                 result = result[3:-3].strip()
             return json.loads(result)
         else:
-            print(f"Ошибка API DeepSeek: {response.status_code} - {response.text}")
+            print(f"[ЭТАП 2] Ошибка API DeepSeek: {response.status_code} - {response.text}")
     except Exception as e:
-        print(f"Ошибка запроса к ИИ: {e}")
+        print(f"[ЭТАП 2] Ошибка запроса к DeepSeek: {e}")
     return None
 
 if __name__ == "__main__":
-    playlist_data = update_playlist_with_ai_overview()
+    # Шаг 1: Сбор информации
+    search_data = step_1_fetch_ai_overview()
+    
+    if not search_data:
+        print("Критическая ошибка: не удалось собрать данные на Этапе 1.")
+        exit(1)
+        
+    # Шаг 2: Обработка моделью
+    playlist_data = step_2_process_with_deepseek(search_data)
     
     if playlist_data and "series_number" in playlist_data:
         playlist_data["last_updated"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        print("\n--- Финальный JSON из AI Overview ---")
+        print("\n--- Финальный обработанный JSON ---")
         print(json.dumps(playlist_data, ensure_ascii=False, indent=2))
         print("-" * 40)
         
         with open("playlist.json", "w", encoding="utf-8") as f:
             json.dump(playlist_data, f, ensure_ascii=False, indent=2)
-        print("Файл playlist.json успешно обновлен на основе Google AI Overview!")
+        print("Файл playlist.json успешно обновлен через двухэтапный пайплайн!")
     else:
-        print("Критическая ошибка: не удалось получить данные.")
+        print("Критическая ошибка: не удалось получить корректные данные на Этапе 2.")
         exit(1)
