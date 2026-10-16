@@ -46,7 +46,7 @@ def step_1_fetch_ai_overview():
     return ""
 
 def step_2_process_with_deepseek(raw_search_text):
-    """ЭТАП 2: Анализ сезона и формирование JSON с ключом для верхней плашки."""
+    """ЭТАП 2: Анализ сезона и формирование точного JSON для приложения."""
     if not DEEPSEEK_API_KEY:
         print("Ошибка: DEEPSEEK_API_KEY не задан.")
         return None
@@ -66,7 +66,7 @@ def step_2_process_with_deepseek(raw_search_text):
     Raw Data from Google AI Overview:
     {raw_search_text}
     
-    Based on Series 6 and Autumn, fill out the complete structure. Make sure to include `series_rewards_text` formatted exactly like "80 PTS: BMW M4 CS, 160 PTS: Koenigsegg One:1" to populate the top banner in the app.
+    Based on Series 6 and Autumn, generate the JSON. To ensure the top rewards banner renders correctly, include the `series_rewards_text` field with exact format: "80 PTS: BMW M4 CS, 160 PTS: Koenigsegg One:1".
     
     Required JSON structure:
     {{
