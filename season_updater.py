@@ -4,11 +4,52 @@ import requests
 import datetime
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+SERPER_API_KEY = os.environ.get("SERPER_API_KEY")
 
-def get_playlist_from_ai():
-    """Получает актуальные данные плейлиста напрямую от ИИ и логирует отправляемый промпт."""
+def google_search(query):
+    """Выполняет точный поиск через Serper API для получения актуальных данных из сети."""
+    if not SERPER_API_KEY:
+        return ""
+        
+    url = "https://google.serper.dev/search"
+    headers = {
+        'X-API-KEY': SERPER_API_KEY,
+        'Content-Type': 'application/json'
+    }
+    payload = json.dumps({
+        "q": query,
+        "num": 5,
+        "gl": "us",
+        "hl": "en"
+    })
+    
+    try:
+        response = requests.post(url, headers=headers, data=payload, timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            results_text = ""
+            
+            # Собираем данные из сниппетов и органики
+            for item in data.get('organic', []):
+                if isinstance(item, dict):
+                    title = item.get('title', '')
+                    snippet = item.get('snippet', '')
+                    results_text += f"TITLE: {title}\nSNIPPET: {snippet}\n\n"
+                    
+            return results_text
+    except Exception as e:
+        print(f"Ошибка поиска: {e}")
+    return ""
+
+def get_playlist_with_search():
+    """Получает актуальные данные плейлиста с помощью поиска и ИИ."""
     current_date_context = datetime.datetime.now().strftime("%B %Y")
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    
+    # Делаем широкий поисковый запрос, чтобы захватить актуальные гайды недели
+    query = f"Forza Horizon 6 seasonal rewards 20 pts 40 pts October 2026"
+    print(f"Поиск в сети по запросу: {query}")
+    search_context = google_search(query)
     
     url = "https://api.deepseek.com/chat/completions"
     headers = {
@@ -16,10 +57,12 @@ def get_playlist_from_ai():
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
     }
 
-    # Формируем точный запрос к модели
     prompt = f"""
-    Today is {date_str}. You are an expert data generator for the Forza Horizon 6 auction database.
-    Based on the current date, determine the active Series, Season, and exact reward cars (20 points and 40 points) for Forza Horizon 6 right now.
+    Today is {date_str}. You are an expert data parser for Forza Horizon 6.
+    Analyze the search results below and your knowledge base to determine the CURRENT active Series, Season, and exact reward cars for 20 points (`cars_20pts`) and 40 points (`cars_40pts`) for this week in October 2026.
+    
+    Search Results:
+    {search_context}
     
     Return STRICTLY valid JSON without Markdown formatting (no ```json and no ```).
     Completely ignore Forza Horizon 5 (FH5).
@@ -35,11 +78,7 @@ def get_playlist_from_ai():
     }}
     """
 
-    # Выводим в лог GitHub Actions вопрос, который отправляется ИИ
-    print("=" * 60)
-    print(f"[ЛОГ ИИ] Отправляем запрос к ИИ (Дата контекста: {date_str}):")
-    print(prompt.strip())
-    print("=" * 60)
+    print("Отправка запроса к ИИ с контекстом поиска...")
 
     try:
         response = requests.post(
@@ -69,12 +108,12 @@ def get_playlist_from_ai():
     return None
 
 if __name__ == "__main__":
-    playlist_data = get_playlist_from_ai()
+    playlist_data = get_playlist_with_search()
     
     if playlist_data and "series_number" in playlist_data:
         playlist_data["last_updated"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        print("\n--- Полученный JSON от ИИ ---")
+        print("\n--- Полученный JSON ---")
         print(json.dumps(playlist_data, ensure_ascii=False, indent=2))
         print("-" * 40)
         
@@ -82,5 +121,5 @@ if __name__ == "__main__":
             json.dump(playlist_data, f, ensure_ascii=False, indent=2)
         print("Файл playlist.json успешно обновлен!")
     else:
-        print("Критическая ошибка: не удалось получить корректные данные от ИИ.")
+        print("Критическая ошибка: не удалось получить корректные данные.")
         exit(1)
