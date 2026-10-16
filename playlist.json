@@ -1,19 +1,19 @@
 {
-  "current_season": "AUTUMN",
-  "series_number": "Series 2: Horizon Meets",
-  "series_rewards": "80 PTS: BMW M4 CS, 160 PTS: Koenigsegg One:1",
+  "current_season": "Autumn",
+  "series_number": "Series 1",
+  "series_rewards": "Seasonal championship rewards and Series progress rewards",
   "cars_20pts": [
     {
-      "name": "1991 GMC Syclone",
+      "name": "2020 Chevrolet Corvette C8 Stingray",
       "est_value": "цены нет"
     }
   ],
   "cars_40pts": [
     {
-      "name": "1999 Lamborghini Diablo GTR",
+      "name": "2019 Porsche 911 GT3 RS",
       "est_value": "цены нет"
     }
   ],
-  "trading_advice": "Совет по трейдингу для сезона Autumn серии Series 2: выставляйте редкие награды плейлиста с завышенной стартовой ценой в первые дни.",
-  "last_updated": "2026-10-15 22:33:00"
+  "trading_advice": "These are current seasonal reward cars; obtain them through seasonal events rather than auction trading. If listed, expect high demand and limited supply, so prices may be inflated.",
+  "last_updated": "2026-10-16 06:18:32"
 }
