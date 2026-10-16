@@ -1,19 +1,26 @@
 {
   "current_season": "Autumn",
-  "series_number": "Series 2",
-  "series_rewards": "80 PTS and 160 PTS series rewards (details not specified)",
+  "series_number": "Series 6",
+  "series_rewards_80pts": {
+    "name": "2025 BMW M4 CS",
+    "est_value": "цены нет"
+  },
+  "series_rewards_160pts": {
+    "name": "2015 Koenigsegg One:1",
+    "est_value": "цены нет"
+  },
   "cars_20pts": [
     {
-      "name": "2018 DeBerti Ford Mustang GT",
+      "name": "2000 Honda Prelude",
       "est_value": "цены нет"
     }
   ],
   "cars_40pts": [
     {
-      "name": "2010 Nissan 370Z",
+      "name": "",
       "est_value": "цены нет"
     }
   ],
-  "trading_advice": "Both cars are seasonal rewards; hold or sell based on demand after the season ends.",
-  "last_updated": "2026-10-16 06:23:45"
+  "trading_advice": "Focus on earning the 80-point BMW M4 CS and 160-point Koenigsegg One:1; both are likely to be valuable in the Auction House. The Honda Prelude at 20 points is a cheap seasonal reward, so grab it if you have spare points.",
+  "last_updated": "2026-10-16 06:40:23"
 }
