@@ -1,26 +1,26 @@
 {
   "current_season": "Autumn",
-  "series_number": "6",
+  "series_number": "Series 6",
   "series_rewards_80pts": {
-    "name": "Unknown",
+    "name": "2025 BMW M4 CS",
     "est_value": "цены нет"
   },
   "series_rewards_160pts": {
-    "name": "Unknown",
+    "name": "2015 Koenigsegg One:1",
     "est_value": "цены нет"
   },
   "cars_20pts": [
     {
-      "name": "Unknown",
+      "name": "2018 DeBerti Ford Mustang GT",
       "est_value": "цены нет"
     }
   ],
   "cars_40pts": [
     {
-      "name": "Unknown",
+      "name": "2010 Nissan 370Z",
       "est_value": "цены нет"
     }
   ],
-  "trading_advice": "No specific reward car names are provided in the source text. The only confirmed details are that the current season is Autumn in Series 6, running from October 15 to October 22, 2026, with up to 53 points available. Without exact car names for the 20, 40, 80, or 160 point rewards, no trading advice can be given. Check the in-game Festival Playlist for the actual reward cars.",
-  "last_updated": "2026-10-16 10:12:34"
+  "trading_advice": "Focus on earning at least 80 points to secure the 2025 BMW M4 CS, and reach 160 points for the 2015 Koenigsegg One:1. The 2018 DeBerti Ford Mustang GT and 2010 Nissan 370Z are great seasonal additions.",
+  "last_updated": "2026-10-16 10:21:48"
 }
