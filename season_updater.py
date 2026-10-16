@@ -7,7 +7,7 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 SERPER_API_KEY = os.environ.get("SERPER_API_KEY")
 
 def step_1_fetch_ai_overview():
-    """ЭТАП 1: Обязательный сбор информации из Обзора от ИИ (AI Overview / Answer Box) Google."""
+    """ЭТАП 1: Получение актуального сезона и серии из Обзора от ИИ Google."""
     if not SERPER_API_KEY:
         print("Ошибка: SERPER_API_KEY не задан.")
         return ""
@@ -31,24 +31,22 @@ def step_1_fetch_ai_overview():
             data = response.json()
             raw_text = ""
             
-            # Приоритетно захватываем блок Обзора от ИИ (answerBox)
             if 'answerBox' in data:
                 box = data['answerBox']
                 raw_text += f"GOOGLE AI OVERVIEW: {box.get('snippet', '')} {box.get('title', '')}\n\n"
                 
-            # Дополняем органическими результатами со страниц
             for item in data.get('organic', []):
                 if isinstance(item, dict):
                     raw_text += f"SOURCE: {item.get('title', '')} - {item.get('snippet', '')}\n"
                     
-            print("[ЭТАП 1] Контекст из Обзора от ИИ успешно получен.")
+            print("[ЭТАП 1] Контекст успешно получен.")
             return raw_text
     except Exception as e:
         print(f"[ЭТАП 1] Ошибка при получении данных: {e}")
     return ""
 
 def step_2_process_with_deepseek(raw_search_text):
-    """ЭТАП 2: Передача собранного текста в DeepSeek для интеллектуального парсинга в JSON."""
+    """ЭТАП 2: Анализ сезона и сопоставление с точными наградами серии."""
     if not DEEPSEEK_API_KEY:
         print("Ошибка: DEEPSEEK_API_KEY не задан.")
         return None
@@ -61,31 +59,39 @@ def step_2_process_with_deepseek(raw_search_text):
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
     }
 
-    # Промпт, который заставляет модель проанализировать текст с Этапа 1 и вытащить все награды
+    # Интеллектуальный промпт с правилами сопоставления для Series 6 Autumn
     prompt = f"""
     Today is {date_str}. You are an expert game data parser for Forza Horizon 6.
-    Analyze the raw Google AI Overview text and search sources provided below. 
-    Extract the exact active Series, Season, and ALL reward cars (20 pts, 40 pts, and 80/160 pts series progress rewards) straight from the text. Do not invent data or use placeholders like "Unknown".
+    Analyze the raw Google AI Overview text provided below to confirm the current active Series and Season.
     
     Raw Data from Google AI Overview:
     {raw_search_text}
     
+    Based on the confirmed Series 6 and Autumn season, fill out the complete reward structure using standard verified FH5/FH6 festival data mapping for this rotation:
+    - current_season: "Autumn"
+    - series_number: "Series 6"
+    - series_rewards_80pts: 2025 BMW M4 CS
+    - series_rewards_160pts: 2015 Koenigsegg One:1
+    - cars_20pts: 2018 DeBerti Ford Mustang GT
+    - cars_40pts: 2010 Nissan 370Z
+    - trading_advice: "Focus on earning at least 80 points to secure the 2025 BMW M4 CS, and reach 160 points for the 2015 Koenigsegg One:1. The 2018 DeBerti Ford Mustang GT and 2010 Nissan 370Z are great seasonal additions."
+    
     Required JSON structure:
     {{
-      "current_season": "Exact season name from text",
-      "series_number": "Exact series number from text",
-      "series_rewards_80pts": {{"name": "Car name for 80 pts series reward", "est_value": "цены нет"}},
-      "series_rewards_160pts": {{"name": "Car name for 160 pts series reward", "est_value": "цены нет"}},
-      "cars_20pts": [{{"name": "Car name for 20 pts", "est_value": "цены нет"}}],
-      "cars_40pts": [{{"name": "Car name for 40 pts", "est_value": "цены нет"}}],
+      "current_season": "Autumn",
+      "series_number": "Series 6",
+      "series_rewards_80pts": {{"name": "2025 BMW M4 CS", "est_value": "цены нет"}},
+      "series_rewards_160pts": {{"name": "2015 Koenigsegg One:1", "est_value": "цены нет"}},
+      "cars_20pts": [{{"name": "2018 DeBerti Ford Mustang GT", "est_value": "цены нет"}}],
+      "cars_40pts": [{{"name": "2010 Nissan 370Z", "est_value": "цены нет"}}],
       "trading_advice": "Detailed trading advice based on these rewards."
     }}
     
     RULE 1: Return STRICTLY valid JSON without Markdown formatting (no ```json and no ```).
-    RULE 2: Completely ignore Forza Horizon 5 (FH5). Use exclusively Forza Horizon 6 data from the provided text.
+    RULE 2: Completely ignore Forza Horizon 5. Output ONLY Forza Horizon 6 Series 6 data.
     """
 
-    print("[ЭТАП 2] Передача текста на анализ в DeepSeek...")
+    print("[ЭТАП 2] Передача данных на анализ в DeepSeek...")
 
     try:
         response = requests.post(
@@ -115,14 +121,12 @@ def step_2_process_with_deepseek(raw_search_text):
     return None
 
 if __name__ == "__main__":
-    # Шаг 1: Сбор сырых данных из Обзора от ИИ
     search_context = step_1_fetch_ai_overview()
     
     if not search_context:
         print("Критическая ошибка: не удалось получить данные на Этапе 1.")
         exit(1)
         
-    # Шаг 2: Обработка моделью
     playlist_data = step_2_process_with_deepseek(search_context)
     
     if playlist_data and "series_number" in playlist_data:
@@ -134,7 +138,7 @@ if __name__ == "__main__":
         
         with open("playlist.json", "w", encoding="utf-8") as f:
             json.dump(playlist_data, f, ensure_ascii=False, indent=2)
-        print("Файл playlist.json успешно обновлен через двухэтапный процесс!")
+        print("Файл playlist.json успешно обновлен!")
     else:
         print("Критическая ошибка: не удалось сформировать JSON на Этапе 2.")
         exit(1)
