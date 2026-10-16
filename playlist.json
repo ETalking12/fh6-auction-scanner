@@ -1,19 +1,19 @@
 {
   "current_season": "Autumn",
-  "series_number": "Series 1",
-  "series_rewards": "Seasonal championship rewards and Series progress rewards",
+  "series_number": "Series 2",
+  "series_rewards": "80 PTS and 160 PTS series rewards (details not specified)",
   "cars_20pts": [
     {
-      "name": "2020 Chevrolet Corvette C8 Stingray",
+      "name": "2018 DeBerti Ford Mustang GT",
       "est_value": "цены нет"
     }
   ],
   "cars_40pts": [
     {
-      "name": "2019 Porsche 911 GT3 RS",
+      "name": "2010 Nissan 370Z",
       "est_value": "цены нет"
     }
   ],
-  "trading_advice": "These are current seasonal reward cars; obtain them through seasonal events rather than auction trading. If listed, expect high demand and limited supply, so prices may be inflated.",
-  "last_updated": "2026-10-16 06:18:32"
+  "trading_advice": "Both cars are seasonal rewards; hold or sell based on demand after the season ends.",
+  "last_updated": "2026-10-16 06:23:45"
 }
