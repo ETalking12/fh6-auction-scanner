@@ -1,26 +1,26 @@
 {
   "current_season": "Autumn",
-  "series_number": "Series 6",
+  "series_number": "6",
   "series_rewards_80pts": {
-    "name": "Honda NSX-R GT",
+    "name": "Unknown",
     "est_value": "цены нет"
   },
   "series_rewards_160pts": {
-    "name": "#2 Ford GT40",
+    "name": "Unknown",
     "est_value": "цены нет"
   },
   "cars_20pts": [
     {
-      "name": "DeBerti Ford Mustang GT",
+      "name": "Unknown",
       "est_value": "цены нет"
     }
   ],
   "cars_40pts": [
     {
-      "name": "2021 MINI John Cooper Works GP",
+      "name": "Unknown",
       "est_value": "цены нет"
     }
   ],
-  "trading_advice": "Focus on earning at least 80 points to secure the Honda NSX-R GT, a highly desirable car. If you can reach 160 points, the #2 Ford GT40 is a valuable reward. The DeBerti Ford Mustang GT at 20 points is relatively easy to obtain, while the 2021 MINI John Cooper Works GP at 40 points requires moderate effort. Prioritize these cars if you enjoy collecting rare vehicles. Since the Series 6 rewards are available until November 5, 2026, plan your gameplay to accumulate points steadily. Trading these cars may yield good returns later, but current market values are unknown.",
-  "last_updated": "2026-10-16 07:39:51"
+  "trading_advice": "No specific reward car names are provided in the source text. The only confirmed details are that the current season is Autumn in Series 6, running from October 15 to October 22, 2026, with up to 53 points available. Without exact car names for the 20, 40, 80, or 160 point rewards, no trading advice can be given. Check the in-game Festival Playlist for the actual reward cars.",
+  "last_updated": "2026-10-16 10:12:34"
 }
