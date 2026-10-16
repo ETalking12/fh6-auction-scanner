@@ -6,11 +6,9 @@ import datetime
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 
 def get_playlist_from_ai():
-    """Получает актуальные данные плейлиста напрямую от ИИ на основе текущей системной даты."""
-    current_date_context = datetime.datetime.now().strftime("%B %Y (%d B, %Y)")
+    """Получает актуальные данные плейлиста напрямую от ИИ и логирует отправляемый промпт."""
+    current_date_context = datetime.datetime.now().strftime("%B %Y")
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
-    
-    print( запросу к ИИ (дата: {date_str})...)
     
     url = "https://api.deepseek.com/chat/completions"
     headers = {
@@ -18,6 +16,7 @@ def get_playlist_from_ai():
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
     }
 
+    # Формируем точный запрос к модели
     prompt = f"""
     Today is {date_str}. You are an expert data generator for the Forza Horizon 6 auction database.
     Based on the current date, determine the active Series, Season, and exact reward cars (20 points and 40 points) for Forza Horizon 6 right now.
@@ -35,6 +34,12 @@ def get_playlist_from_ai():
       "trading_advice": "Short advice for these cars"
     }}
     """
+
+    # Выводим в лог GitHub Actions вопрос, который отправляется ИИ
+    print("=" * 60)
+    print(f"[ЛОГ ИИ] Отправляем запрос к ИИ (Дата контекста: {date_str}):")
+    print(prompt.strip())
+    print("=" * 60)
 
     try:
         response = requests.post(
@@ -57,6 +62,8 @@ def get_playlist_from_ai():
             elif result.startswith("```"):
                 result = result[3:-3].strip()
             return json.loads(result)
+        else:
+            print(f"Ошибка API DeepSeek: {response.status_code} - {response.text}")
     except Exception as e:
         print(f"Ошибка запроса к ИИ: {e}")
     return None
@@ -67,12 +74,13 @@ if __name__ == "__main__":
     if playlist_data and "series_number" in playlist_data:
         playlist_data["last_updated"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        print("--- Полученный JSON от ИИ ---")
+        print("\n--- Полученный JSON от ИИ ---")
         print(json.dumps(playlist_data, ensure_ascii=False, indent=2))
         print("-" * 40)
         
         with open("playlist.json", "w", encoding="utf-8") as f:
             json.dump(playlist_data, f, ensure_ascii=False, indent=2)
-        print("Файл playlist.json успешно обновлен напрямик от ИИ!")
+        print("Файл playlist.json успешно обновлен!")
     else:
-        print("Не удалось получить данные от ИИ.")
+        print("Критическая ошибка: не удалось получить корректные данные от ИИ.")
+        exit(1)
