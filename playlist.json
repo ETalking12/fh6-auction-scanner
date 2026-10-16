@@ -1,26 +1,26 @@
 {
   "current_season": "Autumn",
-  "series_number": "Series 3",
+  "series_number": "Series 6",
   "series_rewards_80pts": {
-    "name": "2023 Porsche 911 GT3 RS",
+    "name": "Unknown",
     "est_value": "цены нет"
   },
   "series_rewards_160pts": {
-    "name": "2020 Lamborghini Sián Roadster",
+    "name": "Unknown",
     "est_value": "цены нет"
   },
   "cars_20pts": [
     {
-      "name": "2019 Toyota Supra",
+      "name": "Unknown",
       "est_value": "цены нет"
     }
   ],
   "cars_40pts": [
     {
-      "name": "2021 Mercedes-AMG ONE",
+      "name": "Unknown",
       "est_value": "цены нет"
     }
   ],
-  "trading_advice": "The 2023 Porsche 911 GT3 RS and 2020 Lamborghini Sián Roadster are highly sought after. Sniping these cars in the Auction House requires patience and quick reflexes. Set your max buyout to the lowest possible and search frequently, especially during off-peak hours. For the 2019 Toyota Supra and 2021 Mercedes-AMG ONE, prices may fluctuate; consider selling if you have duplicates, but hold if you expect future demand. Always check the auction house for underpriced listings and use the 'Buy Out' option immediately.",
-  "last_updated": "2026-10-16 07:16:52"
+  "trading_advice": "No specific reward car names were provided in the source text. Check the in-game Festival Playlist for exact rewards.",
+  "last_updated": "2026-10-16 07:27:44"
 }
