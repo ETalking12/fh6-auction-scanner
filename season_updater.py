@@ -46,7 +46,7 @@ def step_1_fetch_ai_overview():
     return ""
 
 def step_2_process_with_deepseek(raw_search_text):
-    """ЭТАП 2: Анализ сезона и сопоставление с точными наградами серии."""
+    """ЭТАП 2: Анализ сезона и формирование JSON."""
     if not DEEPSEEK_API_KEY:
         print("Ошибка: DEEPSEEK_API_KEY не задан.")
         return None
@@ -66,17 +66,15 @@ def step_2_process_with_deepseek(raw_search_text):
     Raw Data from Google AI Overview:
     {raw_search_text}
     
-    Based on the confirmed Series 6 and Autumn season, fill out the complete reward structure. All reward fields (`series_rewards_80pts`, `series_rewards_160pts`, `cars_20pts`, `cars_40pts`) must be formatted as arrays of objects:
+    Based on Series 6 and Autumn, fill out the structure. Put explicit mentions of 80pts (2025 BMW M4 CS) and 160pts (2015 Koenigsegg One:1) rewards clearly inside the `trading_advice` text so the user can easily see them in the app interface.
     
     Required JSON structure:
     {{
       "current_season": "Autumn",
       "series_number": "Series 6",
-      "series_rewards_80pts": [{{"name": "2025 BMW M4 CS", "est_value": "цены нет"}}],
-      "series_rewards_160pts": [{{"name": "2015 Koenigsegg One:1", "est_value": "цены нет"}}],
       "cars_20pts": [{{"name": "2018 DeBerti Ford Mustang GT", "est_value": "цены нет"}}],
       "cars_40pts": [{{"name": "2010 Nissan 370Z", "est_value": "цены нет"}}],
-      "trading_advice": "Focus on earning at least 80 points to secure the 2025 BMW M4 CS, and reach 160 points for the 2015 Koenigsegg One:1. The 2018 DeBerti Ford Mustang GT and 2010 Nissan 370Z are great seasonal additions."
+      "trading_advice": "Series 6 Rewards -> 80 pts: 2025 BMW M4 CS | 160 pts: 2015 Koenigsegg One:1. Season Rewards -> 20 pts: 2018 DeBerti Ford Mustang GT, 40 pts: 2010 Nissan 370Z. Focus on earning points to secure these vehicles."
     }}
     
     RULE 1: Return STRICTLY valid JSON without Markdown formatting (no ```json and no ```).
@@ -107,7 +105,7 @@ def step_2_process_with_deepseek(raw_search_text):
                 result = result[3:-3].strip()
             return json.loads(result)
         else:
-            print(f"[ЭТАП 2] Ошибка API DeepSeek: {response.status_code} - {response.text}")
+            print(f"[ЭТАPS 2] Ошибка API DeepSeek: {response.status_code} - {response.text}")
     except Exception as e:
         print(f"[ЭТАП 2] Ошибка запроса: {e}")
     return None
