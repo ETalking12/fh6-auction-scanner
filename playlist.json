@@ -1,6 +1,7 @@
 {
   "current_season": "Autumn",
-  "series_number": "Series 6",
+  "series_number": "Series 6: Horizon Meets",
+  "series_rewards_text": "80 PTS: BMW M4 CS, 160 PTS: Koenigsegg One:1",
   "cars_20pts": [
     {
       "name": "2018 DeBerti Ford Mustang GT",
@@ -13,6 +14,6 @@
       "est_value": "цены нет"
     }
   ],
-  "trading_advice": "Series 6 Rewards -> 80 pts: 2025 BMW M4 CS | 160 pts: 2015 Koenigsegg One:1. Season Rewards -> 20 pts: 2018 DeBerti Ford Mustang GT, 40 pts: 2010 Nissan 370Z. Focus on earning points to secure these vehicles.",
-  "last_updated": "2026-10-16 10:36:52"
+  "trading_advice": "Совет по трейдингу для сезона Autumn серии Series 6: выставляйте редкие награды плейлиста с завышенной стартовой ценой в первые дни.",
+  "last_updated": "2026-10-16 12:32:19"
 }
