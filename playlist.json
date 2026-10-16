@@ -1,14 +1,18 @@
 {
   "current_season": "Autumn",
   "series_number": "Series 6",
-  "series_rewards_80pts": {
-    "name": "2025 BMW M4 CS",
-    "est_value": "цены нет"
-  },
-  "series_rewards_160pts": {
-    "name": "2015 Koenigsegg One:1",
-    "est_value": "цены нет"
-  },
+  "series_rewards_80pts": [
+    {
+      "name": "2025 BMW M4 CS",
+      "est_value": "цены нет"
+    }
+  ],
+  "series_rewards_160pts": [
+    {
+      "name": "2015 Koenigsegg One:1",
+      "est_value": "цены нет"
+    }
+  ],
   "cars_20pts": [
     {
       "name": "2018 DeBerti Ford Mustang GT",
@@ -22,5 +26,5 @@
     }
   ],
   "trading_advice": "Focus on earning at least 80 points to secure the 2025 BMW M4 CS, and reach 160 points for the 2015 Koenigsegg One:1. The 2018 DeBerti Ford Mustang GT and 2010 Nissan 370Z are great seasonal additions.",
-  "last_updated": "2026-10-16 10:21:48"
+  "last_updated": "2026-10-16 10:30:50"
 }
