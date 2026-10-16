@@ -29,7 +29,6 @@ def google_search(query):
             data = response.json()
             results_text = ""
             
-            # Собираем данные из сниппетов и органики
             for item in data.get('organic', []):
                 if isinstance(item, dict):
                     title = item.get('title', '')
@@ -42,12 +41,10 @@ def google_search(query):
     return ""
 
 def get_playlist_with_search():
-    """Получает актуальные данные плейлиста с помощью поиска и ИИ."""
-    current_date_context = datetime.datetime.now().strftime("%B %Y")
+    """Получает полные и точные данные плейлиста, включая 80 и 160 очков."""
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     
-    # Делаем широкий поисковый запрос, чтобы захватить актуальные гайды недели
-    query = f"Forza Horizon 6 seasonal rewards 20 pts 40 pts October 2026"
+    query = f"Forza Horizon 6 seasonal rewards series points 80 pts 160 pts October 2026"
     print(f"Поиск в сети по запросу: {query}")
     search_context = google_search(query)
     
@@ -59,7 +56,12 @@ def get_playlist_with_search():
 
     prompt = f"""
     Today is {date_str}. You are an expert data parser for Forza Horizon 6.
-    Analyze the search results below and your knowledge base to determine the CURRENT active Series, Season, and exact reward cars for 20 points (`cars_20pts`) and 40 points (`cars_40pts`) for this week in October 2026.
+    Analyze the search results below and your knowledge base to determine the exact and correct active Series, Season, and ALL reward cars for this week in October 2026.
+    
+    You MUST extract:
+    1. Current season (e.g. Autumn) and Series number.
+    2. Seasonal rewards for 20 points (`cars_20pts`) and 40 points (`cars_40pts`).
+    3. Series progress rewards for 80 points (`series_rewards_80pts`) and 160 points (`series_rewards_160pts`) if available, formatted as object or string with car name.
     
     Search Results:
     {search_context}
@@ -70,15 +72,16 @@ def get_playlist_with_search():
     JSON Template:
     {{
       "current_season": "Name of the season (e.g., Autumn)",
-      "series_number": "Name of the series (e.g., Series 1)",
-      "series_rewards": "General series rewards if any",
+      "series_number": "Name of the series (e.g., Series 2)",
+      "series_rewards_80pts": {{"name": "Car Name or empty", "est_value": "цены нет"}},
+      "series_rewards_160pts": {{"name": "Car Name or empty", "est_value": "цены нет"}},
       "cars_20pts": [{{"name": "Exact Car Name", "est_value": "цены нет"}}],
       "cars_40pts": [{{"name": "Exact Car Name", "est_value": "цены нет"}}],
       "trading_advice": "Short advice for these cars"
     }}
     """
 
-    print("Отправка запроса к ИИ с контекстом поиска...")
+    print("Отправка расширенного запроса к ИИ...")
 
     try:
         response = requests.post(
@@ -119,7 +122,7 @@ if __name__ == "__main__":
         
         with open("playlist.json", "w", encoding="utf-8") as f:
             json.dump(playlist_data, f, ensure_ascii=False, indent=2)
-        print("Файл playlist.json успешно обновлен!")
+        print("Файл playlist.json успешно обновлен с учетом 80/160 PTS!")
     else:
         print("Критическая ошибка: не удалось получить корректные данные.")
         exit(1)
