@@ -1,7 +1,15 @@
 {
   "current_season": "Autumn",
   "series_number": "Series 6: Horizon Meets",
-  "series_rewards_text": "80 PTS: BMW M4 CS, 160 PTS: Koenigsegg One:1",
+  "series_rewards": "80 PTS: BMW M4 CS, 160 PTS: Koenigsegg One:1",
+  "series_rewards_80pts": {
+    "name": "2025 BMW M4 CS",
+    "est_value": "цены нет"
+  },
+  "series_rewards_160pts": {
+    "name": "2015 Koenigsegg One:1",
+    "est_value": "цены нет"
+  },
   "cars_20pts": [
     {
       "name": "2018 DeBerti Ford Mustang GT",
@@ -15,5 +23,5 @@
     }
   ],
   "trading_advice": "Совет по трейдингу для сезона Autumn серии Series 6: выставляйте редкие награды плейлиста с завышенной стартовой ценой в первые дни.",
-  "last_updated": "2026-10-16 13:09:49"
+  "last_updated": "2026-10-16 14:39:27"
 }
