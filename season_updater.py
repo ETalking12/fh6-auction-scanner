@@ -12,13 +12,16 @@ def step_1_fetch_ai_overview():
         print("Ошибка: SERPER_API_KEY не задан.")
         return ""
         
+    current_month_year = datetime.datetime.now().strftime("%B %Y") # Например: "October 2026"
+    
     url = "https://google.serper.dev/search"
     headers = {
         'X-API-KEY': SERPER_API_KEY,
         'Content-Type': 'application/json'
     }
+    # Динамический запрос без жесткой привязки к конкретному сезону
     payload = json.dumps({
-        "q": "season forza horizon 6 english series 6 autumn October 2026",
+        "q": f"forza horizon 6 series 6 playlist rewards current season {current_month_year}",
         "num": 5,
         "gl": "us",
         "hl": "en"
@@ -46,7 +49,7 @@ def step_1_fetch_ai_overview():
     return ""
 
 def step_2_process_with_deepseek(raw_search_text):
-    """ЭТАП 2: Анализ сезона и формирование точного JSON с полной поддержкой ключей плашки."""
+    """ЭТАП 2: Анализ сезона и формирование точного JSON на основе реальных данных из поиска."""
     if not DEEPSEEK_API_KEY:
         print("Ошибка: DEEPSEEK_API_KEY не задан.")
         return None
@@ -61,30 +64,31 @@ def step_2_process_with_deepseek(raw_search_text):
 
     prompt = f"""
     Today is {date_str}. You are an expert game data parser for Forza Horizon 6.
-    Analyze the raw Google AI Overview text provided below to confirm the current active Series and Season.
+    Analyze the raw Google search text provided below to find the CURRENT active Season (Summer, Autumn, Winter, or Spring), Series number, and the exact reward cars for 20 points, 40 points, and series rewards.
     
-    Raw Data from Google AI Overview:
+    Raw Search Data:
     {raw_search_text}
     
-    Based on Series 6 and Autumn, generate the JSON. To ensure the top banner and reward fields render perfectly in the mobile app, include both the text format (`series_rewards`) and the object structures (`series_rewards_80pts`, `series_rewards_160pts`).
+    Extract the real data for the active week/season from the text above and generate the JSON. 
+    If a specific est_value is unknown, set it to "цены нет".
     
-    Required JSON structure:
+    Required JSON structure format:
     {{
-      "current_season": "Autumn",
-      "series_number": "Series 6: Horizon Meets",
-      "series_rewards": "80 PTS: BMW M4 CS, 160 PTS: Koenigsegg One:1",
-      "series_rewards_80pts": {{"name": "2025 BMW M4 CS", "est_value": "цены нет"}},
-      "series_rewards_160pts": {{"name": "2015 Koenigsegg One:1", "est_value": "цены нет"}},
-      "cars_20pts": [{{"name": "2018 DeBerti Ford Mustang GT", "est_value": "цены нет"}}],
-      "cars_40pts": [{{"name": "2010 Nissan 370Z", "est_value": "цены нет"}}],
-      "trading_advice": "Совет по трейдингу для сезона Autumn серии Series 6: выставляйте редкие награды плейлиста с завышенной стартовой ценой в первые дни."
+      "current_season": "<Aktual Season name from search, e.g. Winter>",
+      "series_number": "<Series name from search, e.g. Series 6: Horizon Meets>",
+      "series_rewards": "<Text description of series rewards>",
+      "series_rewards_80pts": {{"name": "<Car name for 80pts>", "est_value": "цены нет"}},
+      "series_rewards_160pts": {{"name": "<Car name for 160pts>", "est_value": "цены нет"}},
+      "cars_20pts": [{{"name": "<Car name for 20 points>", "est_value": "цены нет"}}],
+      "cars_40pts": [{{"name": "<Car name for 40 points>", "est_value": "цены нет"}}],
+      "trading_advice": "<A short trading advice for the current season>"
     }}
     
     RULE 1: Return STRICTLY valid JSON without Markdown formatting (no ```json and no ```).
-    RULE 2: Completely ignore Forza Horizon 5. Output ONLY Forza Horizon 6 Series 6 data.
+    RULE 2: Use ONLY data found in the Raw Search Data above. Do not use hardcoded or old placeholder cars.
     """
 
-    print("[ЭТАП 2] Передача данных на анализ в DeepSeek...")
+    print("[ЭТАPS 2] Передача данных на анализ в DeepSeek...")
 
     try:
         response = requests.post(
