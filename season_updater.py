@@ -1,141 +1,95 @@
 import os
 import json
-import requests
 import datetime
 
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
-SERPER_API_KEY = os.environ.get("SERPER_API_KEY")
-
-def step_1_fetch_ai_overview():
-    """ЭТАП 1: Получение актуального сезона и серии из Обзора от ИИ Google."""
-    if not SERPER_API_KEY:
-        print("Ошибка: SERPER_API_KEY не задан.")
-        return ""
-        
-    current_month_year = datetime.datetime.now().strftime("%B %Y") # Например: "October 2026"
-    
-    url = "https://google.serper.dev/search"
-    headers = {
-        'X-API-KEY': SERPER_API_KEY,
-        'Content-Type': 'application/json'
+# Полное расписание серий и недель
+# Каждая серия длится ровно 4 недели (Лето -> Осень -> Зима -> Весна)
+GAME_SCHEDULE = {
+    6: { # Series 6: Horizon Meets
+        "name": "Series 6: Horizon Meets",
+        "series_rewards": "80 PTS: BMW M4 CS, 160 PTS: Koenigsegg One:1",
+        "weeks": {
+            1: {
+                "season": "Summer", 
+                "cars_20pts": [{"name": "2000 Honda Prelude Type SH", "est_value": "15 000 000 CR"}], 
+                "cars_40pts": [{"name": "1974 Toyota Corolla SR5", "est_value": "8 000 000 CR"}], 
+                "advice": "Летний сезон Series 6: выставляйте редкие награды в первые дни по верху рынка."
+            },
+            2: {
+                "season": "Autumn", 
+                "cars_20pts": [{"name": "2018 DeBerti Ford Mustang GT", "est_value": "12 000 000 CR"}], 
+                "cars_40pts": [{"name": "2010 Nissan 370Z", "est_value": "6 000 000 CR"}], 
+                "advice": "Осенний сезон Series 6: скупайте ликвидные лоты по низу рынка."
+            },
+            3: {
+                "season": "Winter", 
+                "cars_20pts": [{"name": "2004 Saleen S7", "est_value": "12 000 000 CR"}], 
+                "cars_40pts": [{"name": "1986 Audi #2 Audi Sport quattro S1", "est_value": "10 000 000 CR"}], 
+                "advice": "Зимний сезон Series 6: пик спроса на раллийные и эксклюзивные авто."
+            },
+            4: {
+                "season": "Spring", 
+                "cars_20pts": [{"name": "Машина Весны 6", "est_value": "цены нет"}], 
+                "cars_40pts": [{"name": "Машина Весны 6 (40pt)", "est_value": "цены нет"}], 
+                "advice": "Весенний сезон Series 6: распродажа активов перед сменой серии."
+            }
+        }
+    },
+    7: { # Шаблон для будущих обновлений (когда начнется 7 серия, просто заполните этот блок)
+        "name": "Series 7: Next Update",
+        "series_rewards": "80 PTS: Новинка, 160 PTS: Награда",
+        "weeks": {
+            1: {"season": "Summer", "cars_20pts": [{"name": "Машина Лета 7", "est_value": "цены нет"}], "cars_40pts": [{"name": "Машина Лета 7 (40pt)", "est_value": "цены нет"}], "advice": "Лето 7-й серии."},
+            2: {"season": "Autumn", "cars_20pts": [{"name": "Машина Осени 7", "est_value": "цены нет"}], "cars_40pts": [{"name": "Машина Осени 7 (40pt)", "est_value": "цены нет"}], "advice": "Осень 7-й серии."},
+            3: {"season": "Winter", "cars_20pts": [{"name": "Машина Зимы 7", "est_value": "цены нет"}], "cars_40pts": [{"name": "Машина Зимы 7 (40pt)", "est_value": "цены нет"}], "advice": "Зима 7-й серии."},
+            4: {"season": "Spring", "cars_20pts": [{"name": "Машина Весны 7", "est_value": "цены нет"}], "cars_40pts": [{"name": "Машина Весны 7 (40pt)", "est_value": "цены нет"}], "advice": "Весна 7-й серии."}
+        }
     }
-    # Динамический запрос без жесткой привязки к конкретному сезону
-    payload = json.dumps({
-        "q": f"forza horizon 6 series 6 playlist rewards current season {current_month_year}",
-        "num": 5,
-        "gl": "us",
-        "hl": "en"
-    })
-    
-    try:
-        print("[ЭТАП 1] Получение данных из Обзора от ИИ Google...")
-        response = requests.post(url, headers=headers, data=payload, timeout=15)
-        if response.status_code == 200:
-            data = response.json()
-            raw_text = ""
-            
-            if 'answerBox' in data:
-                box = data['answerBox']
-                raw_text += f"GOOGLE AI OVERVIEW: {box.get('snippet', '')} {box.get('title', '')}\n\n"
-                
-            for item in data.get('organic', []):
-                if isinstance(item, dict):
-                    raw_text += f"SOURCE: {item.get('title', '')} - {item.get('snippet', '')}\n"
-                    
-            print("[ЭТАП 1] Контекст успешно получен.")
-            return raw_text
-    except Exception as e:
-        print(f"[ЭТАП 1] Ошибка при получении данных: {e}")
-    return ""
+}
 
-def step_2_process_with_deepseek(raw_search_text):
-    """ЭТАП 2: Анализ сезона и формирование точного JSON на основе реальных данных из поиска."""
-    if not DEEPSEEK_API_KEY:
-        print("Ошибка: DEEPSEEK_API_KEY не задан.")
-        return None
+def get_current_series_and_week():
+    # Базовая точка отсчета (первый четверг старта 6-й серии)
+    start_date = datetime.date(2026, 10, 8)
+    today = datetime.date.today()
+    
+    days_diff = (today - start_date).days
+    if days_diff < 0:
+        days_diff = 0
         
-    date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    total_weeks = days_diff // 7
     
-    url = "https://api.deepseek.com/chat/completions"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
-    }
-
-    prompt = f"""
-    Today is {date_str}. You are an expert game data parser for Forza Horizon 6.
-    Analyze the raw Google search text provided below to find the CURRENT active Season (Summer, Autumn, Winter, or Spring), Series number, and the exact reward cars for 20 points, 40 points, and series rewards.
+    # Каждые 4 недели происходит переход на новую серию
+    series_number = 6 + (total_weeks // 4)
+    week_number = (total_weeks % 4) + 1
     
-    Raw Search Data:
-    {raw_search_text}
-    
-    Extract the real data for the active week/season from the text above and generate the JSON. 
-    If a specific est_value is unknown, set it to "цены нет".
-    
-    Required JSON structure format:
-    {{
-      "current_season": "<Aktual Season name from search, e.g. Winter>",
-      "series_number": "<Series name from search, e.g. Series 6: Horizon Meets>",
-      "series_rewards": "<Text description of series rewards>",
-      "series_rewards_80pts": {{"name": "<Car name for 80pts>", "est_value": "цены нет"}},
-      "series_rewards_160pts": {{"name": "<Car name for 160pts>", "est_value": "цены нет"}},
-      "cars_20pts": [{{"name": "<Car name for 20 points>", "est_value": "цены нет"}}],
-      "cars_40pts": [{{"name": "<Car name for 40 points>", "est_value": "цены нет"}}],
-      "trading_advice": "<A short trading advice for the current season>"
-    }}
-    
-    RULE 1: Return STRICTLY valid JSON without Markdown formatting (no ```json and no ```).
-    RULE 2: Use ONLY data found in the Raw Search Data above. Do not use hardcoded or old placeholder cars.
-    """
-
-    print("[ЭТАPS 2] Передача данных на анализ в DeepSeek...")
-
-    try:
-        response = requests.post(
-            url, 
-            headers=headers, 
-            json={
-                "model": "deepseek-chat",
-                "messages": [
-                    {"role": "system", "content": "You are a strict JSON data generator. Output ONLY raw valid JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.1
-            }, 
-            timeout=30
-        )
-        if response.status_code == 200:
-            result = response.json()['choices'][0]['message']['content'].strip()
-            if result.startswith("```json"):
-                result = result[7:-3].strip()
-            elif result.startswith("```"):
-                result = result[3:-3].strip()
-            return json.loads(result)
-        else:
-            print(f"[ЭТАП 2] Ошибка API DeepSeek: {response.status_code} - {response.text}")
-    except Exception as e:
-        print(f"[ЭТАП 2] Ошибка запроса: {e}")
-    return None
+    # Страховка: если наступила серия, которой еще нет в словаре, берем последнюю доступную
+    if series_number not in GAME_SCHEDULE:
+        series_number = max(GAME_SCHEDULE.keys())
+        
+    return series_number, week_number
 
 if __name__ == "__main__":
-    search_context = step_1_fetch_ai_overview()
+    s_num, w_num = get_current_series_and_week()
+    series_info = GAME_SCHEDULE[s_num]
+    week_data = series_info["weeks"][w_num]
     
-    if not search_context:
-        print("Критическая ошибка: не удалось получить данные на Этапе 1.")
-        exit(1)
-        
-    playlist_data = step_2_process_with_deepseek(search_context)
+    playlist_data = {
+        "current_season": week_data["season"],
+        "series_number": series_info["name"],
+        "series_rewards": series_info["series_rewards"],
+        "series_rewards_80pts": {"name": "2025 BMW M4 CS", "est_value": "15 000 000 CR"},
+        "series_rewards_160pts": {"name": "2015 Koenigsegg One:1", "est_value": "20 000 000 CR"},
+        "cars_20pts": week_data["cars_20pts"],
+        "cars_40pts": week_data["cars_40pts"],
+        "trading_advice": week_data["advice"],
+        "last_updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
     
-    if playlist_data and "series_number" in playlist_data:
-        playlist_data["last_updated"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print("\n--- Финальный JSON ---")
+    print(json.dumps(playlist_data, ensure_ascii=False, indent=2))
+    print("-" * 40)
+    
+    with open("playlist.json", "w", encoding="utf-8") as f:
+        json.dump(playlist_data, f, ensure_ascii=False, indent=2)
         
-        print("\n--- Финальный JSON ---")
-        print(json.dumps(playlist_data, ensure_ascii=False, indent=2))
-        print("-" * 40)
-        
-        with open("playlist.json", "w", encoding="utf-8") as f:
-            json.dump(playlist_data, f, ensure_ascii=False, indent=2)
-        print("Файл playlist.json успешно обновлен!")
-    else:
-        print("Критическая ошибка: не удалось сформировать JSON на Этапе 2.")
-        exit(1)
+    print(f"Успешно: Series {s_num}, Неделя {w_num} ({week_data['season']}) записана в playlist.json")
