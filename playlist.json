@@ -1,27 +1,27 @@
 {
-  "current_season": "Summer",
+  "current_season": "Spring",
   "series_number": "Series 6: Horizon Meets",
-  "series_rewards": "2025 BMW M4 CS (Series Reward, 80 PTS, Playlist exclusive)",
+  "series_rewards": "80 PTS: BMW M4 CS, 160 PTS: Koenigsegg One:1",
   "series_rewards_80pts": {
     "name": "2025 BMW M4 CS",
-    "est_value": "цены нет"
+    "est_value": "15 000 000 CR"
   },
   "series_rewards_160pts": {
-    "name": "Unknown",
-    "est_value": "цены нет"
+    "name": "2015 Koenigsegg One:1",
+    "est_value": "20 000 000 CR"
   },
   "cars_20pts": [
     {
-      "name": "2000 Honda Prelude SH",
+      "name": "Машина Весны 6",
       "est_value": "цены нет"
     }
   ],
   "cars_40pts": [
     {
-      "name": "1974 Toyota Corolla",
+      "name": "Машина Весны 6 (40pt)",
       "est_value": "цены нет"
     }
   ],
-  "trading_advice": "Focus on earning points for the 2025 BMW M4 CS, a playlist-exclusive series reward at 80 PTS, and grab the 2000 Honda Prelude SH and 1974 Toyota Corolla as seasonal rewards before the Summer season ends.",
-  "last_updated": "2026-10-22 20:02:01"
+  "trading_advice": "Весенний сезон Series 6: распродажа активов перед сменой серии.",
+  "last_updated": "2026-10-29 19:48:18"
 }
