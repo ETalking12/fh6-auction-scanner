@@ -1,7 +1,7 @@
 {
-  "current_season": "Spring",
-  "series_number": "Series 6: Horizon Meets",
-  "series_rewards": "80 PTS: BMW M4 CS, 160 PTS: Koenigsegg One:1",
+  "current_season": "Summer",
+  "series_number": "Series 7: Next Update",
+  "series_rewards": "80 PTS: Новинка, 160 PTS: Награда",
   "series_rewards_80pts": {
     "name": "2025 BMW M4 CS",
     "est_value": "15 000 000 CR"
@@ -12,16 +12,16 @@
   },
   "cars_20pts": [
     {
-      "name": "Машина Весны 6",
+      "name": "Машина Лета 7",
       "est_value": "цены нет"
     }
   ],
   "cars_40pts": [
     {
-      "name": "Машина Весны 6 (40pt)",
+      "name": "Машина Лета 7 (40pt)",
       "est_value": "цены нет"
     }
   ],
-  "trading_advice": "Весенний сезон Series 6: распродажа активов перед сменой серии.",
-  "last_updated": "2026-10-29 19:48:18"
+  "trading_advice": "Лето 7-й серии.",
+  "last_updated": "2026-11-05 21:11:47"
 }
